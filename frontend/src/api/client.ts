@@ -14,8 +14,13 @@ import type {
   QuestaoGeradaResponse,
 } from '../types';
 
+const rawBaseURL = (import.meta.env.VITE_API_URL || '').trim();
+const baseURL = rawBaseURL
+  ? (rawBaseURL.endsWith('/api') ? rawBaseURL : `${rawBaseURL.replace(/\/$/, '')}/api`)
+  : '/api';
+
 const api = axios.create({
-  baseURL: '/api',
+  baseURL,
   timeout: 30000,
   headers: {
     'Content-Type': 'application/json',

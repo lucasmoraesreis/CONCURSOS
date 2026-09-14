@@ -16,9 +16,8 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Configura a URL dinamicamente a partir do settings
-sync_url = settings.database_url.replace("postgresql+asyncpg://", "postgresql://")
-config.set_main_option("sqlalchemy.url", sync_url)
+# Configura a URL dinamicamente a partir do settings (compatível com Supabase, Render e Railway)
+config.set_main_option("sqlalchemy.url", settings.sync_database_url)
 
 target_metadata = Base.metadata
 

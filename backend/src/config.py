@@ -30,7 +30,29 @@ class Settings(BaseSettings):
 
     @property
     def cors_origins_list(self) -> list[str]:
+        if self.cors_origins.strip() == "*":
+            return ["*"]
         return [o.strip() for o in self.cors_origins.split(",")]
+
+    @property
+    def async_database_url(self) -> str:
+        """Garante prefixo postgresql+asyncpg:// para conexões assíncronas."""
+        url = self.database_url.strip()
+        if url.startswith("postgres://"):
+            return url.replace("postgres://", "postgresql+asyncpg://", 1)
+        if url.startswith("postgresql://") and not url.startswith("postgresql+asyncpg://"):
+            return url.replace("postgresql://", "postgresql+asyncpg://", 1)
+        return url
+
+    @property
+    def sync_database_url(self) -> str:
+        """Garante prefixo postgresql:// para migrações síncronas do Alembic."""
+        url = self.database_url.strip()
+        if url.startswith("postgresql+asyncpg://"):
+            return url.replace("postgresql+asyncpg://", "postgresql://", 1)
+        if url.startswith("postgres://"):
+            return url.replace("postgres://", "postgresql://", 1)
+        return url
 
 
 settings = Settings()

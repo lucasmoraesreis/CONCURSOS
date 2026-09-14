@@ -12,6 +12,7 @@ if sys.platform == "win32":
 # CONFIGURAÇÕES DA CHAVE DE API E REPOSITÓRIO OFICIAL
 REPO_URL = "https://github.com/lucasmoraesreis/CONCURSOS"
 
+
 def obter_gemini_key() -> str:
     """Lê a chave do arquivo backend/.env ou variável de ambiente sem expor no commit."""
     env_path = Path("backend/.env")
@@ -26,7 +27,7 @@ def obter_gemini_key() -> str:
 
 
 def criar_arquivos_infraestrutura():
-    print("[*] 1. Criando e blindando arquivos de infraestrutura...")
+    print("[*] 1. Configurando arquivos da arquitetura descentralizada (Supabase + Vercel + Render/Railway)...")
     
     # 1.1 Criar pasta do backend se não existir e salvar o .env camuflado
     os.makedirs("backend", exist_ok=True)
@@ -66,43 +67,21 @@ backend/logs/
         f.write(gitignore_content)
     print("    [+] Arquivo .gitignore criado na raiz.")
 
-    # 1.3 Criar o Blueprint da Render (render.yaml) na raiz do projeto
-    render_yaml_content = """databases:
-  - name: concurso-db
-    plan: free
-    postgresMajorVersion: 16
+    # 1.3 Garantir roteamento SPA na Vercel (frontend/vercel.json)
+    os.makedirs("frontend", exist_ok=True)
+    vercel_json_path = Path("frontend/vercel.json")
+    if not vercel_json_path.exists():
+        vercel_json_path.write_text('{\n  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]\n}\n', encoding="utf-8")
+        print("    [+] Arquivo frontend/vercel.json configurado.")
 
-services:
-  - type: web
-    name: concurso-backend
-    runtime: docker
-    plan: free
-    dockerContext: ./backend
-    dockerfilePath: backend/Dockerfile
-    envVars:
-      - key: DATABASE_URL
-        fromDatabase:
-          name: concurso-db
-          property: connectionString
-      - key: GEMINI_API_KEY
-        sync: false
-
-  - type: web
-    name: concurso-frontend
-    runtime: docker
-    plan: free
-    dockerContext: ./frontend
-    dockerfilePath: frontend/Dockerfile
-    envVars:
-      - key: VITE_API_URL
-        fromService:
-          type: web
-          name: concurso-backend
-          property: host
-"""
-    with open("render.yaml", "w", encoding="utf-8") as f:
-        f.write(render_yaml_content)
-    print("    [+] Arquivo render.yaml (Blueprint Render) configurado.")
+    # 1.4 Remover render.yaml antigo da raiz para desacoplar serviços
+    render_yaml = Path("render.yaml")
+    if render_yaml.exists():
+        try:
+            render_yaml.unlink()
+            print("    [+] Arquivo render.yaml órfão removido com sucesso.")
+        except Exception as e:
+            print(f"    [-] Aviso ao remover render.yaml: {e}")
 
 
 def executar_comandos_git():
@@ -119,13 +98,18 @@ def executar_comandos_git():
         subprocess.run(["git", "remote", "remove", "origin"], stderr=subprocess.DEVNULL)
         subprocess.run(["git", "remote", "add", "origin", REPO_URL], check=True)
         
+        # Remove render.yaml do índice se ainda estiver rastreado
+        subprocess.run(["git", "rm", "-f", "render.yaml"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
+        
         # Adiciona os arquivos respeitando o .gitignore
         subprocess.run(["git", "add", "."], check=True)
         
         # Faz o commit do projeto limpo
+        commit_msg = "Arquitetura Descentralizada: Supabase + Vercel + FastAPI Web Service"
         status = subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True)
         if status.stdout.strip():
-            subprocess.run(["git", "commit", "-m", "Deploy Automático: Sistema Qconcursos Finalizado e Camuflado"], check=True)
+            subprocess.run(["git", "commit", "-m", commit_msg], check=True)
+            print(f"    [+] Commit criado: '{commit_msg}'")
         else:
             print("    [*] Repositório já está com as alterações comitadas.")
         
