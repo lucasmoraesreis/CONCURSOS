@@ -1,0 +1,37 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: questoes_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: questoes_admin
+      POSTGRES_PASSWORD: questoes_secret_2024
+      POSTGRES_DB: questoes_concursos
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/01_init.sql
+      - ./database/002_pgvector_semantic_search.sql:/docker-entrypoint-initdb.d/02_pgvector.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U questoes_admin -d questoes_concursos"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: questoes_pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@questoes.local
+      PGADMIN_DEFAULT_PASSWORD: admin123
+    ports:
+      - "5050:80"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+    driver: local

@@ -1,0 +1,107 @@
+version: "3.9"
+
+# ==============================================================================
+# Docker Compose para Produção com Isolamento de Redes (Network Segmentation)
+# ==============================================================================
+
+services:
+  # ----------------------------------------------------------------------------
+  # 1. Banco de Dados: PostgreSQL 16 com pgvector
+  # ----------------------------------------------------------------------------
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: questoes_db_prod
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-questoes_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-questoes_secret_2024}
+      POSTGRES_DB: ${POSTGRES_DB:-questoes_concursos}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - pgdata_prod:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
+      - ./database/002_pgvector_semantic_search.sql:/docker-entrypoint-initdb.d/02_pgvector.sql:ro
+    networks:
+      - backend-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-questoes_admin} -d ${POSTGRES_DB:-questoes_concursos}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2048M
+
+  # ----------------------------------------------------------------------------
+  # 2. Backend: API REST FastAPI (Ponte entre frontend e banco)
+  # ----------------------------------------------------------------------------
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: questoes_backend_prod
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-questoes_admin}:${POSTGRES_PASSWORD:-questoes_secret_2024}@postgres:5432/${POSTGRES_DB:-questoes_concursos}
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost,http://localhost:80,http://frontend}
+      API_HOST: "0.0.0.0"
+      API_PORT: "8000"
+    volumes:
+      - backend_logs:/app/logs
+    networks:
+      - backend-network
+      - frontend-network
+    expose:
+      - "8000"
+    deploy:
+      resources:
+        limits:
+          cpus: "1.5"
+          memory: 1024M
+
+  # ----------------------------------------------------------------------------
+  # 3. Frontend: SPA React compilada servida via Nginx Alpine
+  # ----------------------------------------------------------------------------
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: questoes_frontend_prod
+    restart: always
+    depends_on:
+      - backend
+    ports:
+      - "${PORT:-80}:80"
+    networks:
+      - frontend-network
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+
+# ------------------------------------------------------------------------------
+# Volumes persistentes
+# ------------------------------------------------------------------------------
+volumes:
+  pgdata_prod:
+    driver: local
+  backend_logs:
+    driver: local
+
+# ------------------------------------------------------------------------------
+# Segmentação de Redes (Frontend não acessa diretamente o banco de dados)
+# ------------------------------------------------------------------------------
+networks:
+  frontend-network:
+    driver: bridge
+  backend-network:
+    driver: bridge
