@@ -90,7 +90,7 @@ services:
         fromService:
           type: web
           name: qconcursos-backend
-          property: url
+          property: host
 """
     with open("render.yaml", "w", encoding="utf-8") as f:
         f.write(render_yaml_content)
