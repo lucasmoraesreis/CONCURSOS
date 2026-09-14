@@ -1,27 +1,18 @@
 # ==============================================================================
-# Render.com Blueprint — Infraestrutura como Código (IaC)
-# Deploy 100% GRATUITO (Free Tier): PostgreSQL 16 + FastAPI Docker + React Docker
+# Render.com Blueprint — Deploy Automático na Camada Gratuita (Free Tier)
 # ==============================================================================
 
 databases:
   - name: qconcursos-db
-    databaseName: questoes_concursos
-    user: questoes_admin
     plan: free
     postgresMajorVersion: 16
-    ipAllowList: [] # Permite conexões internas seguras da Render
 
 services:
-  # ----------------------------------------------------------------------------
-  # 1. Backend API (FastAPI + Uvicorn + Alembic auto-migrations via Docker)
-  # ----------------------------------------------------------------------------
   - type: web
     name: qconcursos-backend
     runtime: docker
     plan: free
-    dockerContext: ./backend
-    dockerfilePath: ./backend/Dockerfile
-    healthCheckPath: /
+    dockerfilePath: backend/Dockerfile
     envVars:
       - key: DATABASE_URL
         fromDatabase:
@@ -29,29 +20,15 @@ services:
           property: connectionString
       - key: GEMINI_API_KEY
         sync: false
-        generate: false
-      - key: GEMINI_MODEL
-        value: gemini-2.5-flash
-      - key: CORS_ORIGINS
-        value: "*"
-      - key: PORT
-        value: 8000
 
-  # ----------------------------------------------------------------------------
-  # 2. Frontend UI (React + Vite SPA servido via Nginx Alpine Docker)
-  # ----------------------------------------------------------------------------
   - type: web
     name: qconcursos-frontend
     runtime: docker
     plan: free
-    dockerContext: ./frontend
-    dockerfilePath: ./frontend/Dockerfile
-    healthCheckPath: /
+    dockerfilePath: frontend/Dockerfile
     envVars:
       - key: VITE_API_URL
         fromService:
           type: web
           name: qconcursos-backend
-          property: host
-      - key: PORT
-        value: 80
+          property: url
