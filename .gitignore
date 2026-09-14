@@ -1,12 +1,8 @@
-# ==============================================================================
-# .gitignore — Arquivo de Descarte e Blindagem Local (SecOps)
-# ==============================================================================
-
+# Credenciais e Ambientes
 .env
 .env*
 *.env
 .env.local
-.env.*.local
 .venv/
 venv/
 __pycache__/
@@ -14,15 +10,14 @@ node_modules/
 frontend/node_modules/
 dist/
 frontend/dist/
+build/
 *.db
 *.sqlite
-*.sqlite3
 *.pdf
 data/
 logs/
 backend/logs/
-*.pem
-*.key
+.DS_Store
 .vscode/
 .idea/
 .gemini/
