@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     gemini_model: str = "gemini-2.5-flash"
 
     model_config = {
-        "env_file": str(PROJECT_ROOT / ".env"),
+        "env_file": [str(PROJECT_ROOT / ".env"), str(Path(__file__).resolve().parent.parent / ".env")],
         "env_file_encoding": "utf-8",
         "extra": "ignore",
     }

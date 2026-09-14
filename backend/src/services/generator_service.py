@@ -98,8 +98,8 @@ class QuestionGeneratorService:
 
     def _get_client(self):
         from google import genai
-        # Zero-Trust: Leitura estrita e dinâmica exclusivamente do ambiente
-        api_key = os.environ.get("GEMINI_API_KEY", "").strip()
+        # Zero-Trust: Leitura dinâmica exclusivamente da memória via os.getenv
+        api_key = (os.getenv("GEMINI_API_KEY") or "").strip()
         if not api_key or api_key in ("placeholder", "sua_chave_do_gemini_aqui", "SUA_CHAVE_AQUI"):
             raise ValueError(
                 "CRÍTICO [SecOps]: GEMINI_API_KEY não configurada ou inválida no ambiente do servidor. "

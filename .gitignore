@@ -1,8 +1,18 @@
 # ==============================================================================
-# .gitignore — Plataforma de Questões de Concurso
+# .gitignore — Plataforma de Questões de Concurso (Proteção Máxima SecOps)
 # ==============================================================================
 
-# Python
+# Credenciais e Segredos (NUNCA SUBIR PARA O GITHUB)
+.env
+.env*
+*.env
+.env.local
+.env.*.local
+*.pem
+*.key
+*.cert
+
+# Python & Ambientes Virtuais
 __pycache__/
 *.py[cod]
 *$py.class
@@ -23,8 +33,6 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
-
-# Ambientes Virtuais (Virtualenvs)
 .venv/
 venv/
 ENV/
@@ -32,12 +40,10 @@ env/
 env.bak/
 venv.bak/
 
-# Configurações e Segredos (NUNCA SUBIR CHAVES)
-.env
-.env.local
-.env.*.local
-*.pem
-*.key
+# Bancos de Dados SQLite / Locais
+*.db
+*.sqlite
+*.sqlite3
 
 # Node / Frontend React
 frontend/node_modules/
@@ -68,6 +74,6 @@ provas/downloads/
 Thumbs.db
 desktop.ini
 
-# Antigravity / Gemini IDE local
+# Antigravity / IDE local
 .gemini/
 .agents/

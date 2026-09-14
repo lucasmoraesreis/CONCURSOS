@@ -158,7 +158,7 @@ async def busca_semantica(
 
     # Gera embedding da query do usuário
     try:
-        api_key = os.environ.get("GEMINI_API_KEY", "").strip()
+        api_key = (os.getenv("GEMINI_API_KEY") or "").strip()
         if not api_key or api_key in ("placeholder", "sua_chave_do_gemini_aqui", "SUA_CHAVE_AQUI"):
             raise HTTPException(
                 status_code=503,
