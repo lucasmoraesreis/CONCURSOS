@@ -68,13 +68,13 @@ backend/logs/
 
     # 1.3 Criar o Blueprint da Render (render.yaml) na raiz do projeto
     render_yaml_content = """databases:
-  - name: qconcursos-db
+  - name: concurso-db
     plan: free
     postgresMajorVersion: 16
 
 services:
   - type: web
-    name: qconcursos-backend
+    name: concurso-backend
     runtime: docker
     plan: free
     dockerContext: ./backend
@@ -82,13 +82,13 @@ services:
     envVars:
       - key: DATABASE_URL
         fromDatabase:
-          name: qconcursos-db
+          name: concurso-db
           property: connectionString
       - key: GEMINI_API_KEY
         sync: false
 
   - type: web
-    name: qconcursos-frontend
+    name: concurso-frontend
     runtime: docker
     plan: free
     dockerContext: ./frontend
@@ -97,7 +97,7 @@ services:
       - key: VITE_API_URL
         fromService:
           type: web
-          name: qconcursos-backend
+          name: concurso-backend
           property: host
 """
     with open("render.yaml", "w", encoding="utf-8") as f:
