@@ -77,6 +77,7 @@ services:
     name: qconcursos-backend
     runtime: docker
     plan: free
+    dockerContext: ./backend
     dockerfilePath: backend/Dockerfile
     envVars:
       - key: DATABASE_URL
@@ -90,6 +91,7 @@ services:
     name: qconcursos-frontend
     runtime: docker
     plan: free
+    dockerContext: ./frontend
     dockerfilePath: frontend/Dockerfile
     envVars:
       - key: VITE_API_URL
