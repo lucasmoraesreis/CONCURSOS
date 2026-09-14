@@ -16,7 +16,7 @@ def obter_gemini_key() -> str:
                 if val:
                     return val
     # Fallback seguro
-    return os.getenv("GEMINI_API_KEY", "AQ.Ab8RN6IdhjK19VqYd1Pk4iv1Oy-0-E11JtDzu_tov6sqaHOGaA")
+    return os.getenv("GEMINI_API_KEY", "")
 
 
 def criar_arquivos_infraestrutura():
