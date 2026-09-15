@@ -50,6 +50,15 @@ async def validate_security_and_environment():
         masked = f"{api_key[:4]}...{api_key[-4:]}" if len(api_key) > 8 else "***"
         logger.info(f"🔒 [SECOPS]: GEMINI_API_KEY ativa e blindada no ambiente de execução ({masked}).")
 
+    # Seed Automático: Popula concursos, disciplinas e questões se o banco estiver vazio
+    from src.database import AsyncSessionLocal
+    from src.services.seeder import seed_database_if_empty
+    try:
+        async with AsyncSessionLocal() as session:
+            await seed_database_if_empty(session)
+    except Exception as e:
+        logger.warning(f"Aviso de banco no startup: {e}. Verifique se o Docker/Supabase está acessível.")
+
 # CORS — permite requests do frontend React
 app.add_middleware(
     CORSMiddleware,

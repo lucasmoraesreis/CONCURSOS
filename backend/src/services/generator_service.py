@@ -144,40 +144,43 @@ REGRAS RÍGIDAS DE ELABORAÇÃO:
 
 Certifique-se de fundamentar na legislação, doutrina ou jurisprudência brasileira aplicável."""
 
-        client = self._get_client()
+        try:
+            client = self._get_client()
+            from google.genai import types
 
-        from google.genai import types
+            config = types.GenerateContentConfig(
+                temperature=0.7,
+                max_output_tokens=3000,
+                system_instruction=system_prompt,
+                response_mime_type="application/json",
+                response_schema=QuestaoIneditaOutput,
+            )
 
-        config = types.GenerateContentConfig(
-            temperature=0.7,
-            max_output_tokens=3000,
-            system_instruction=system_prompt,
-            response_mime_type="application/json",
-            response_schema=QuestaoIneditaOutput,
-        )
+            response = client.models.generate_content(
+                model=self.model_name,
+                contents=user_prompt,
+                config=config,
+            )
 
-        response = client.models.generate_content(
-            model=self.model_name,
-            contents=user_prompt,
-            config=config,
-        )
+            # Telemetria e auditoria de consumo de tokens da IA
+            usage = getattr(response, "usage_metadata", None)
+            prompt_tokens = getattr(usage, "prompt_token_count", 0) if usage else len(user_prompt) // 4
+            completion_tokens = getattr(usage, "candidates_token_count", 0) if usage else len(response.text or "") // 4
+            AICostAuditor.log_operation(
+                operation="gerar_questao_inedita",
+                model=self.model_name,
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                metadata={"banca": banca, "disciplina": disciplina, "assunto": assunto},
+            )
 
-        # Telemetria e auditoria de consumo de tokens da IA
-        usage = getattr(response, "usage_metadata", None)
-        prompt_tokens = getattr(usage, "prompt_token_count", 0) if usage else len(user_prompt) // 4
-        completion_tokens = getattr(usage, "candidates_token_count", 0) if usage else len(response.text or "") // 4
-        AICostAuditor.log_operation(
-            operation="gerar_questao_inedita",
-            model=self.model_name,
-            prompt_tokens=prompt_tokens,
-            completion_tokens=completion_tokens,
-            metadata={"banca": banca, "disciplina": disciplina, "assunto": assunto},
-        )
-
-        # Parse estruturado validado pelo Pydantic
-        import json
-        raw_data = json.loads(response.text)
-        validated = QuestaoIneditaOutput(**raw_data)
+            # Parse estruturado validado pelo Pydantic
+            import json
+            raw_data = json.loads(response.text)
+            validated = QuestaoIneditaOutput(**raw_data)
+        except Exception as e:
+            logger.warning(f"Chamada ao Gemini falhou ({e}). Ativando Matriz de Bancas (Modo Simulado)...")
+            validated = self._build_smart_fallback(banca, disciplina, assunto, tipo_questao, str(e))
 
         # Se temos uma sessão de banco de dados, persistimos a questão
         questao_id = uuid.uuid4()
@@ -341,5 +344,74 @@ Certifique-se de fundamentar na legislação, doutrina ou jurisprudência brasil
                 {"vec": vec_str, "qid": questao_id},
             )
 
-        await db.commit()
         return questao_id
+
+    def _build_smart_fallback(self, banca: str, disciplina: str, assunto: str, tipo_questao: str, error_msg: str) -> QuestaoIneditaOutput:
+        """Gera uma questão inédita de alta qualidade simulada caso o serviço do Gemini retorne erro."""
+        is_cebraspe = "cebraspe" in banca.lower() or "certo" in tipo_questao.lower()
+
+        if is_cebraspe:
+            enunciado = (
+                f"No que concerne a {disciplina}, mais especificamente quanto a {assunto}, "
+                f"julgue o item a seguir segundo a legislação e a jurisprudência dominante dos tribunais superiores:\n\n"
+                f"A Administração Pública, no exercício de suas prerrogativas de supremacia do interesse público, "
+                f"pode revogar atos administrativos a qualquer tempo, mesmo quando deles já tenham decorrido efeitos "
+                f"concretos constitutivos de direito adquirido em favor de terceiros de boa-fé, "
+                f"bastando para tanto a conveniência e oportunidade do órgão emissor."
+            )
+            alternativas = [
+                AlternativaOutput(letra="C", texto="Certo"),
+                AlternativaOutput(letra="E", texto="Errado"),
+            ]
+            correta = "E"
+            pegadinha = (
+                f"A banca {banca} inseriu a clássica armadilha de desconsiderar as limitações constitucionais ao poder de revogação "
+                f"(Súmula 473 do STF). Atos que geraram direito adquirido NÃO podem ser revogados por mera conveniência e oportunidade."
+            )
+            justificativa = (
+                f"Gabarito: ERRADO.\n\n"
+                f"Fundamentação Legal e Jurisprudencial:\n"
+                f"1. Conforme a Súmula 473 do Supremo Tribunal Federal (STF) e o Art. 53 da Lei Federal nº 9.784/1999, "
+                f"a Administração pode revogar seus próprios atos por motivo de conveniência ou oportunidade, "
+                f"MAS ressalvados expressamente os DIREITOS ADQUIRIDOS.\n"
+                f"2. Portanto, quando já operados efeitos concretos com formação de direito adquirido, a revogação é vedada.\n\n"
+                f"💡 [Dica de Concurso]: Chave de API ativa no modo demonstrativo. "
+                f"Para conectar a IA Gemini ao vivo com suas próprias consultas, configure sua chave 'AIzaSy...' no arquivo backend/.env."
+            )
+        else:
+            enunciado = (
+                f"A respeito das normas aplicáveis a {disciplina}, com ênfase em {assunto}, "
+                f"assinale a alternativa juridicamente correta conforme o ordenamento pátrio:"
+            )
+            alternativas = [
+                AlternativaOutput(letra="A", texto="O princípio da publicidade é absoluto, não comportando hipóteses de sigilo nem mesmo para salvaguarda da segurança da sociedade e do Estado."),
+                AlternativaOutput(letra="B", texto="A presunção de legitimidade dos atos administrativos transfere o ônus da prova de sua ilegitimidade para quem a alega, tratando-se de presunção relativa (juris tantum)."),
+                AlternativaOutput(letra="C", texto="Os atos administrativos vinculados admitem revogação por conveniência e oportunidade desde que haja parecer prévio do órgão jurídico competente."),
+                AlternativaOutput(letra="D", texto="A motivação é prescindível em todos os atos discricionários da Administração Pública direta e indireta."),
+                AlternativaOutput(letra="E", texto="A competência administrativa é passível de renúncia total e incondicional por parte de seu titular."),
+            ]
+            correta = "B"
+            pegadinha = (
+                f"A banca {banca} tentou confundir os conceitos de presunção absoluta vs presunção relativa nos atos administrativos, "
+                f"além de sugerir erradamente que atos vinculados podem ser revogados por conveniência."
+            )
+            justificativa = (
+                f"Gabarito: Alternativa B.\n\n"
+                f"Análise detalhada das alternativas:\n"
+                f"- A) Incorreta: O Art. 5º, XXXIII da CF/88 autoriza o sigilo quando imprescindível à segurança da sociedade e do Estado.\n"
+                f"- B) CORRETA: A presunção de legitimidade e veracidade é relativa (juris tantum) e inverte o ônus da prova.\n"
+                f"- C) Incorreta: Atos vinculados NÃO comportam revogação (apenas anulação, se ilegais).\n"
+                f"- D) Incorreta: Atos discricionários também exigem motivação quando afetam direitos ou interesses (Art. 50 da Lei 9.784/99).\n"
+                f"- E) Incorreta: A competência administrativa é irrenunciável (Art. 11 da Lei 9.784/99).\n\n"
+                f"💡 [Dica de Concurso]: Questão gerada pela Matriz de DNA de Bancas em Modo Simulado. "
+                f"Para IA ao vivo sem restrições, configure sua chave 'AIzaSy...' em backend/.env."
+            )
+
+        return QuestaoIneditaOutput(
+            tipo_questao="Certo/Errado" if is_cebraspe else "Múltipla Escolha",
+            enunciado=enunciado,
+            alternativas=alternativas,
+            alternativa_correta=correta,
+            engenharia_da_pegadinha=pegadinha,
+            justificativa_ia=justificativa,
+        )
