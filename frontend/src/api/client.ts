@@ -438,6 +438,7 @@ export async function executarAuditorPegadinha(payload: AuditorPegadinhaRequest)
   return data;
 }
 
+export { api };
 export default api;
 
 
