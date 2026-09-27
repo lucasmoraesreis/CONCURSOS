@@ -19,21 +19,14 @@ router = APIRouter(prefix="/api", tags=["Assuntos"])
 
 
 @router.get(
-    "/disciplinas/{disciplina_id}/assuntos",
+    "/assuntos",
     response_model=list[AssuntoResponse],
 )
-async def list_assuntos_by_disciplina(
-    disciplina_id: UUID,
-    concurso_id: UUID = Query(..., description="ID do concurso para filtro cascata"),
+async def list_all_assuntos(
+    disciplina_id: UUID | None = Query(None, description="Filtrar por disciplina"),
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    Lista assuntos de uma disciplina filtrados por concurso.
-
-    JOIN: assuntos ← questões ← provas
-    Filtros: disciplina_id + concurso_id
-    Performance: utiliza índice idx_questoes_assunto + idx_questoes_prova_disciplina
-    """
+    """Lista todos os assuntos ou filtrados por disciplina."""
     query = (
         select(
             Assunto.id,
@@ -41,15 +34,68 @@ async def list_assuntos_by_disciplina(
             Assunto.slug,
             func.count(Questao.id).label("total_questoes"),
         )
-        .join(Questao, Questao.assunto_id == Assunto.id)
-        .join(Prova, Questao.prova_id == Prova.id)
-        .where(
-            Prova.concurso_id == concurso_id,
-            Questao.disciplina_id == disciplina_id,
-        )
-        .group_by(Assunto.id, Assunto.nome, Assunto.slug)
-        .order_by(Assunto.nome)
+        .outerjoin(Questao, Questao.assunto_id == Assunto.id)
     )
+    if disciplina_id:
+        query = query.where(Assunto.disciplina_id == disciplina_id)
+
+    query = query.group_by(Assunto.id, Assunto.nome, Assunto.slug).order_by(Assunto.nome)
+    result = await db.execute(query)
+    rows = result.all()
+
+    return [
+        AssuntoResponse(
+            id=row.id,
+            nome=row.nome,
+            slug=row.slug,
+            total_questoes=row.total_questoes,
+        )
+        for row in rows
+    ]
+
+
+@router.get(
+    "/disciplinas/{disciplina_id}/assuntos",
+    response_model=list[AssuntoResponse],
+)
+async def list_assuntos_by_disciplina(
+    disciplina_id: UUID,
+    concurso_id: UUID | None = Query(None, description="ID do concurso para filtro cascata (opcional)"),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Lista assuntos de uma disciplina, opcionalmente filtrados por concurso.
+    """
+    if concurso_id:
+        query = (
+            select(
+                Assunto.id,
+                Assunto.nome,
+                Assunto.slug,
+                func.count(Questao.id).label("total_questoes"),
+            )
+            .join(Questao, Questao.assunto_id == Assunto.id)
+            .join(Prova, Questao.prova_id == Prova.id)
+            .where(
+                Prova.concurso_id == concurso_id,
+                Questao.disciplina_id == disciplina_id,
+            )
+            .group_by(Assunto.id, Assunto.nome, Assunto.slug)
+            .order_by(Assunto.nome)
+        )
+    else:
+        query = (
+            select(
+                Assunto.id,
+                Assunto.nome,
+                Assunto.slug,
+                func.count(Questao.id).label("total_questoes"),
+            )
+            .outerjoin(Questao, Questao.assunto_id == Assunto.id)
+            .where(Assunto.disciplina_id == disciplina_id)
+            .group_by(Assunto.id, Assunto.nome, Assunto.slug)
+            .order_by(Assunto.nome)
+        )
 
     result = await db.execute(query)
     rows = result.all()

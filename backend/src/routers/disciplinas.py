@@ -15,8 +15,42 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.database import get_db
 from src.models import Disciplina, Questao, Prova
 from src.schemas import DisciplinaResponse
+from src.services.cache_service import cache_service
 
 router = APIRouter(prefix="/api", tags=["Disciplinas"])
+
+
+@router.get("/disciplinas", response_model=list[DisciplinaResponse])
+async def list_all_disciplinas(db: AsyncSession = Depends(get_db)):
+    """Lista todas as disciplinas cadastradas com a contagem total de questões (com cache L1)."""
+    cached = await cache_service.get("disciplinas:all")
+    if cached is not None:
+        return cached
+
+    query = (
+        select(
+            Disciplina.id,
+            Disciplina.nome,
+            Disciplina.slug,
+            func.count(Questao.id).label("total_questoes"),
+        )
+        .outerjoin(Questao, Questao.disciplina_id == Disciplina.id)
+        .group_by(Disciplina.id, Disciplina.nome, Disciplina.slug)
+        .order_by(Disciplina.nome)
+    )
+    result = await db.execute(query)
+    rows = result.all()
+    out = [
+        DisciplinaResponse(
+            id=row.id,
+            nome=row.nome,
+            slug=row.slug,
+            total_questoes=row.total_questoes,
+        )
+        for row in rows
+    ]
+    await cache_service.set("disciplinas:all", out, ttl_seconds=600)
+    return out
 
 
 @router.get(

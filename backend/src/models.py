@@ -7,9 +7,8 @@ import uuid
 from datetime import datetime, timezone
 from sqlalchemy import (
     Column, String, Integer, Text, Boolean, DateTime, ForeignKey,
-    CheckConstraint, UniqueConstraint, JSON, CHAR
+    CheckConstraint, UniqueConstraint, JSON, CHAR, Uuid
 )
-from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import DeclarativeBase, relationship
 
 
@@ -19,7 +18,7 @@ class Base(DeclarativeBase):
 
 class Banca(Base):
     __tablename__ = "bancas"
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     nome = Column(String(100), nullable=False, unique=True)
     slug = Column(String(100), nullable=False, unique=True)
     site_url = Column(String(500))
@@ -32,8 +31,8 @@ class Concurso(Base):
     __table_args__ = (
         UniqueConstraint("banca_id", "orgao", "cargo", "ano", name="uq_concurso_identidade"),
     )
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    banca_id = Column(UUID(as_uuid=True), ForeignKey("bancas.id", ondelete="CASCADE"), nullable=False)
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    banca_id = Column(Uuid(as_uuid=True), ForeignKey("bancas.id", ondelete="CASCADE"), nullable=False)
     orgao = Column(String(200), nullable=False)
     cargo = Column(String(300), nullable=False)
     ano = Column(Integer, nullable=False)
@@ -46,8 +45,8 @@ class Concurso(Base):
 
 class Prova(Base):
     __tablename__ = "provas"
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    concurso_id = Column(UUID(as_uuid=True), ForeignKey("concursos.id", ondelete="CASCADE"), nullable=False)
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    concurso_id = Column(Uuid(as_uuid=True), ForeignKey("concursos.id", ondelete="CASCADE"), nullable=False)
     tipo = Column(String(50), default="objetiva")
     pdf_url = Column(String(500))
     pdf_path_local = Column(String(500))
@@ -63,7 +62,7 @@ class Prova(Base):
 
 class Disciplina(Base):
     __tablename__ = "disciplinas"
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     nome = Column(String(200), nullable=False, unique=True)
     slug = Column(String(200), nullable=False, unique=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
@@ -76,8 +75,8 @@ class Assunto(Base):
     __table_args__ = (
         UniqueConstraint("disciplina_id", "slug", name="uq_assunto_disciplina_slug"),
     )
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    disciplina_id = Column(UUID(as_uuid=True), ForeignKey("disciplinas.id", ondelete="CASCADE"), nullable=False)
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    disciplina_id = Column(Uuid(as_uuid=True), ForeignKey("disciplinas.id", ondelete="CASCADE"), nullable=False)
     nome = Column(String(300), nullable=False)
     slug = Column(String(300), nullable=False)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
@@ -90,10 +89,10 @@ class Questao(Base):
     __table_args__ = (
         UniqueConstraint("prova_id", "numero_questao", name="uq_questao_prova_numero"),
     )
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    prova_id = Column(UUID(as_uuid=True), ForeignKey("provas.id", ondelete="CASCADE"), nullable=False)
-    disciplina_id = Column(UUID(as_uuid=True), ForeignKey("disciplinas.id", ondelete="SET NULL"))
-    assunto_id = Column(UUID(as_uuid=True), ForeignKey("assuntos.id", ondelete="SET NULL"))
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    prova_id = Column(Uuid(as_uuid=True), ForeignKey("provas.id", ondelete="CASCADE"), nullable=False)
+    disciplina_id = Column(Uuid(as_uuid=True), ForeignKey("disciplinas.id", ondelete="SET NULL"))
+    assunto_id = Column(Uuid(as_uuid=True), ForeignKey("assuntos.id", ondelete="SET NULL"))
     numero_questao = Column(Integer, nullable=False)
     tipo_questao = Column(String(30), nullable=False)
     enunciado = Column(Text, nullable=False)
@@ -113,8 +112,8 @@ class Alternativa(Base):
     __table_args__ = (
         UniqueConstraint("questao_id", "letra", name="uq_alternativa_questao_letra"),
     )
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    questao_id = Column(UUID(as_uuid=True), ForeignKey("questoes.id", ondelete="CASCADE"), nullable=False)
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    questao_id = Column(Uuid(as_uuid=True), ForeignKey("questoes.id", ondelete="CASCADE"), nullable=False)
     letra = Column(CHAR(1), nullable=False)
     texto = Column(Text, nullable=False)
     is_correta = Column(Boolean, default=False)
@@ -127,7 +126,7 @@ class Alternativa(Base):
 
 class Usuario(Base):
     __tablename__ = "usuarios"
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     nome = Column(String(150), nullable=False)
     email = Column(String(255), nullable=False, unique=True)
     senha_hash = Column(String(255), nullable=False)
@@ -140,9 +139,9 @@ class Usuario(Base):
 
 class HistoricoResposta(Base):
     __tablename__ = "historico_respostas"
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    usuario_id = Column(UUID(as_uuid=True), ForeignKey("usuarios.id", ondelete="CASCADE"), nullable=False)
-    questao_id = Column(UUID(as_uuid=True), ForeignKey("questoes.id", ondelete="CASCADE"), nullable=False)
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    usuario_id = Column(Uuid(as_uuid=True), ForeignKey("usuarios.id", ondelete="CASCADE"), nullable=False)
+    questao_id = Column(Uuid(as_uuid=True), ForeignKey("questoes.id", ondelete="CASCADE"), nullable=False)
     alternativa_marcada = Column(CHAR(1), nullable=False)
     foi_correta = Column(Boolean, nullable=False)
     tempo_segundos = Column(Integer, default=0, nullable=False)
@@ -157,10 +156,10 @@ class DesempenhoMateria(Base):
     __table_args__ = (
         UniqueConstraint("usuario_id", "disciplina_id", "assunto_id", name="uq_usuario_desempenho_materia"),
     )
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    usuario_id = Column(UUID(as_uuid=True), ForeignKey("usuarios.id", ondelete="CASCADE"), nullable=False)
-    disciplina_id = Column(UUID(as_uuid=True), ForeignKey("disciplinas.id", ondelete="CASCADE"), nullable=False)
-    assunto_id = Column(UUID(as_uuid=True), ForeignKey("assuntos.id", ondelete="SET NULL"), nullable=True)
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    usuario_id = Column(Uuid(as_uuid=True), ForeignKey("usuarios.id", ondelete="CASCADE"), nullable=False)
+    disciplina_id = Column(Uuid(as_uuid=True), ForeignKey("disciplinas.id", ondelete="CASCADE"), nullable=False)
+    assunto_id = Column(Uuid(as_uuid=True), ForeignKey("assuntos.id", ondelete="SET NULL"), nullable=True)
     total_questoes_respondidas = Column(Integer, default=0, nullable=False)
     total_acertos = Column(Integer, default=0, nullable=False)
     total_erros = Column(Integer, default=0, nullable=False)
@@ -171,3 +170,29 @@ class DesempenhoMateria(Base):
     usuario = relationship("Usuario", back_populates="desempenhos")
     disciplina = relationship("Disciplina")
     assunto = relationship("Assunto")
+
+
+class EstudoQuestaoEstado(Base):
+    __tablename__ = "estudo_questao_estados"
+    __table_args__ = (
+        UniqueConstraint("usuario_id", "questao_id", name="uq_estudo_usuario_questao"),
+    )
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    usuario_id = Column(Uuid(as_uuid=True), ForeignKey("usuarios.id", ondelete="CASCADE"), nullable=False)
+    questao_id = Column(Uuid(as_uuid=True), ForeignKey("questoes.id", ondelete="CASCADE"), nullable=False)
+    is_favorite = Column(Boolean, default=False, nullable=False)
+    note = Column(Text)
+    answered_count = Column(Integer, default=0, nullable=False)
+    correct_count = Column(Integer, default=0, nullable=False)
+    wrong_count = Column(Integer, default=0, nullable=False)
+    review_stage = Column(Integer, default=0, nullable=False)
+    last_answer = Column(CHAR(1))
+    last_answered_at = Column(DateTime(timezone=True))
+    next_review_at = Column(DateTime(timezone=True))
+    reported_issue = Column(Text)
+    reported_at = Column(DateTime(timezone=True))
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    usuario = relationship("Usuario")
+    questao = relationship("Questao", lazy="selectin")

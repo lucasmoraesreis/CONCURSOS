@@ -102,8 +102,7 @@ class QuestionGeneratorService:
         api_key = (os.getenv("GEMINI_API_KEY") or "").strip()
         if not api_key or api_key in ("placeholder", "sua_chave_do_gemini_aqui", "SUA_CHAVE_AQUI"):
             raise ValueError(
-                "CRÍTICO [SecOps]: GEMINI_API_KEY não configurada ou inválida no ambiente do servidor. "
-                "Defina a variável GEMINI_API_KEY no container/servidor para habilitar a IA."
+                "GEMINI_API_KEY ausente ou não configurada."
             )
         return genai.Client(api_key=api_key)
 
@@ -114,11 +113,12 @@ class QuestionGeneratorService:
         assunto: str,
         tipo_questao: Optional[str] = "Múltipla Escolha",
         dificuldade: Optional[str] = "Médio",
+        provider: Optional[str] = "auto",
         db: Optional[AsyncSession] = None,
     ) -> QuestaoGeradaResponse:
         """
-        Gera uma questão inédita com IA e, opcionalmente, salva no banco de dados
-        com embedding vetorial para busca semântica instantânea.
+        Gera uma questão inédita com orquestração inteligente multi-IA
+        (OpenRouter, Gemini, Groq, Cloudflare, Simulado) e cascata de failover.
         """
         dna = BANCAS_DNA.get(banca, BANCAS_DNA["Cebraspe"])
 
@@ -144,54 +144,35 @@ REGRAS RÍGIDAS DE ELABORAÇÃO:
 
 Certifique-se de fundamentar na legislação, doutrina ou jurisprudência brasileira aplicável."""
 
-        try:
-            client = self._get_client()
-            from google.genai import types
+        from src.services.ai_orchestrator import ai_orchestrator
 
-            config = types.GenerateContentConfig(
-                temperature=0.7,
-                max_output_tokens=3000,
-                system_instruction=system_prompt,
-                response_mime_type="application/json",
-                response_schema=QuestaoIneditaOutput,
-            )
-
-            response = client.models.generate_content(
-                model=self.model_name,
-                contents=user_prompt,
-                config=config,
-            )
-
-            # Telemetria e auditoria de consumo de tokens da IA
-            usage = getattr(response, "usage_metadata", None)
-            prompt_tokens = getattr(usage, "prompt_token_count", 0) if usage else len(user_prompt) // 4
-            completion_tokens = getattr(usage, "candidates_token_count", 0) if usage else len(response.text or "") // 4
-            AICostAuditor.log_operation(
-                operation="gerar_questao_inedita",
-                model=self.model_name,
-                prompt_tokens=prompt_tokens,
-                completion_tokens=completion_tokens,
-                metadata={"banca": banca, "disciplina": disciplina, "assunto": assunto},
-            )
-
-            # Parse estruturado validado pelo Pydantic
-            import json
-            raw_data = json.loads(response.text)
-            validated = QuestaoIneditaOutput(**raw_data)
-        except Exception as e:
-            logger.warning(f"Chamada ao Gemini falhou ({e}). Ativando Matriz de Bancas (Modo Simulado)...")
-            validated = self._build_smart_fallback(banca, disciplina, assunto, tipo_questao, str(e))
+        validated, provider_used = await ai_orchestrator.orchestrate(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            requested_provider=provider,
+            banca=banca,
+            disciplina=disciplina,
+            assunto=assunto,
+            tipo_questao=tipo_questao or "Múltipla Escolha",
+            fallback_builder=self._build_smart_fallback,
+        )
 
         # Se temos uma sessão de banco de dados, persistimos a questão
         questao_id = uuid.uuid4()
         if db is not None:
-            questao_id = await self._persist_to_database(
-                db=db,
-                banca_nome=banca,
-                disciplina_nome=disciplina,
-                assunto_nome=assunto,
-                data=validated,
-            )
+            try:
+                questao_id = await self._persist_to_database(
+                    db=db,
+                    banca_nome=banca,
+                    disciplina_nome=disciplina,
+                    assunto_nome=assunto,
+                    data=validated,
+                    provider_used=provider_used,
+                )
+                await db.commit()
+            except Exception as persist_err:
+                logger.warning(f"Aviso ao persistir questão no banco: {persist_err}. Continuando resposta para o usuário.")
+                await db.rollback()
 
         return QuestaoGeradaResponse(
             id=questao_id,
@@ -205,6 +186,7 @@ Certifique-se de fundamentar na legislação, doutrina ou jurisprudência brasil
             disciplina=disciplina,
             assunto=assunto,
             is_inedita=True,
+            provider_used=provider_used,
         )
 
     async def _persist_to_database(
@@ -214,6 +196,7 @@ Certifique-se de fundamentar na legislação, doutrina ou jurisprudência brasil
         disciplina_nome: str,
         assunto_nome: str,
         data: QuestaoIneditaOutput,
+        provider_used: str = "",
     ) -> uuid.UUID:
         """Salva a questão inédita gerada no PostgreSQL com embedding gerado via Gemini."""
         # 1. Obter ou criar Banca
@@ -308,20 +291,30 @@ Certifique-se de fundamentar na legislação, doutrina ou jurisprudência brasil
         except Exception as e:
             logger.warning(f"Não foi possível gerar embedding para questão inédita: {e}")
 
-        # 7. Criar a Questão
+        # 7. Criar a Questão com numeração sequencial segura (evita colisão de UniqueConstraint)
+        from sqlalchemy import func
+        max_num_res = await db.execute(
+            select(func.max(Questao.numero_questao)).where(Questao.prova_id == prova.id)
+        )
+        current_max = max_num_res.scalar() or 0
+        numero_questao = current_max + 1
+
         questao_id = uuid.uuid4()
         questao = Questao(
             id=questao_id,
             prova_id=prova.id,
             disciplina_id=disciplina.id,
             assunto_id=assunto.id,
-            numero_questao=int(uuid.uuid4().int % 10000) + 1,
+            numero_questao=numero_questao,
             tipo_questao=data.tipo_questao,
             enunciado=data.enunciado,
             alternativa_correta=data.alternativa_correta,
             justificativa_ia=data.justificativa_ia,
             is_inedita=True,
-            extra_metadata={"engenharia_da_pegadinha": data.engenharia_da_pegadinha},
+            extra_metadata={
+                "engenharia_da_pegadinha": data.engenharia_da_pegadinha,
+                "provider_used": provider_used,
+            },
         )
         db.add(questao)
         await db.flush()
@@ -337,75 +330,143 @@ Certifique-se de fundamentar na legislação, doutrina ou jurisprudência brasil
                 )
             )
 
-        # 9. Se embedding gerado, atualiza via raw SQL
+        # 9. Se embedding gerado, atualiza via raw SQL (se pgvector suportado)
         if vec_str:
-            await db.execute(
-                text("UPDATE questoes SET embedding = :vec::vector WHERE id = :qid"),
-                {"vec": vec_str, "qid": questao_id},
-            )
+            try:
+                await db.execute(
+                    text("UPDATE questoes SET embedding = :vec::vector WHERE id = :qid"),
+                    {"vec": vec_str, "qid": questao_id},
+                )
+            except Exception as e:
+                logger.debug(f"Pgvector não ativo ou dialeto sem suporte a vector ({e}). Ignorando gravação de embedding vetorial.")
 
         return questao_id
 
     def _build_smart_fallback(self, banca: str, disciplina: str, assunto: str, tipo_questao: str, error_msg: str) -> QuestaoIneditaOutput:
-        """Gera uma questão inédita de alta qualidade simulada caso o serviço do Gemini retorne erro."""
-        is_cebraspe = "cebraspe" in banca.lower() or "certo" in tipo_questao.lower()
+        """Gera uma questão inédita contextualizada de altíssima fidelidade jurídica/gramatical."""
+        is_cebraspe = "cebraspe" in banca.lower() or "certo" in (tipo_questao or "").lower()
+        disc_lower = disciplina.lower()
 
-        if is_cebraspe:
-            enunciado = (
-                f"No que concerne a {disciplina}, mais especificamente quanto a {assunto}, "
-                f"julgue o item a seguir segundo a legislação e a jurisprudência dominante dos tribunais superiores:\n\n"
-                f"A Administração Pública, no exercício de suas prerrogativas de supremacia do interesse público, "
-                f"pode revogar atos administrativos a qualquer tempo, mesmo quando deles já tenham decorrido efeitos "
-                f"concretos constitutivos de direito adquirido em favor de terceiros de boa-fé, "
-                f"bastando para tanto a conveniência e oportunidade do órgão emissor."
-            )
-            alternativas = [
-                AlternativaOutput(letra="C", texto="Certo"),
-                AlternativaOutput(letra="E", texto="Errado"),
-            ]
-            correta = "E"
-            pegadinha = (
-                f"A banca {banca} inseriu a clássica armadilha de desconsiderar as limitações constitucionais ao poder de revogação "
-                f"(Súmula 473 do STF). Atos que geraram direito adquirido NÃO podem ser revogados por mera conveniência e oportunidade."
-            )
-            justificativa = (
-                f"Gabarito: ERRADO.\n\n"
-                f"Fundamentação Legal e Jurisprudencial:\n"
-                f"1. Conforme a Súmula 473 do Supremo Tribunal Federal (STF) e o Art. 53 da Lei Federal nº 9.784/1999, "
-                f"a Administração pode revogar seus próprios atos por motivo de conveniência ou oportunidade, "
-                f"MAS ressalvados expressamente os DIREITOS ADQUIRIDOS.\n"
-                f"2. Portanto, quando já operados efeitos concretos com formação de direito adquirido, a revogação é vedada.\n\n"
-                f"💡 [Dica de Concurso]: Chave de API ativa no modo demonstrativo. "
-                f"Para conectar a IA Gemini ao vivo com suas próprias consultas, configure sua chave 'AIzaSy...' no arquivo backend/.env."
-            )
+        # 1. DIREITO PENAL
+        if "penal" in disc_lower:
+            if is_cebraspe:
+                enunciado = (
+                    f"No que tange ao Direito Penal, com foco em {assunto}, julgue o item subsequente à luz do Código Penal e da jurisprudência do STJ:\n\n"
+                    f"O funcionário público que solicita ou recebe, para si ou para outrem, direta ou indiretamente, "
+                    f"ainda que fora da função ou antes de assumi-la, mas em razão dela, vantagem indevida, comete o crime "
+                    f"de corrupção passiva, consumando-se a infração penal apenas quando o agente público efetivamente recebe "
+                    f"o proveito econômico espúrio."
+                )
+                alternativas = [
+                    AlternativaOutput(letra="C", texto="Certo"),
+                    AlternativaOutput(letra="E", texto="Errado"),
+                ]
+                correta = "E"
+                pegadinha = (
+                    f"A banca {banca} tentou induzir o candidato ao erro ao classificar a corrupção passiva como crime material, "
+                    f"quando pacificado que se trata de crime FORMAL (de consumação antecipada), dispensando o recebimento da vantagem."
+                )
+                justificativa = (
+                    f"Gabarito: ERRADO.\n\n"
+                    f"Fundamentação Jurídica:\n"
+                    f"1. O crime de Corrupção Passiva (Art. 317 do Código Penal) é delito FORMAL. Sua consumação ocorre "
+                    f"no exato instante em que o funcionário público solicita, recebe ou aceita promessa da vantagem indevida.\n"
+                    f"2. A efetiva percepção da vantagem patrimonial consubstancia mero exaurimento do delito (Súmula do STJ e doutrina majoritária)."
+                )
+            else:
+                enunciado = (
+                    f"Acerca de {disciplina}, especificamente sobre {assunto}, assinale a alternativa correta de acordo com o Código Penal:"
+                )
+                alternativas = [
+                    AlternativaOutput(letra="A", texto="O funcionário público que exige vantagem indevida em razão da função comete crime de corrupção passiva majorada."),
+                    AlternativaOutput(letra="B", texto="Configura concussão a conduta do servidor que exige, para si ou para outrem, direta ou indiretamente, ainda que fora da função ou antes de assumi-la, mas em razão dela, vantagem indevida."),
+                    AlternativaOutput(letra="C", texto="A prevaricação exige expressamente o recebimento de vantagem econômica para a sua consumação."),
+                    AlternativaOutput(letra="D", texto="O peculato culposo não admite a extinção da punibilidade pela reparação do dano antes da sentença irrecorrível."),
+                    AlternativaOutput(letra="E", texto="A condescendência criminosa é crime inafiançável e imprescritível segundo a Constituição Federal."),
+                ]
+                correta = "B"
+                pegadinha = f"A banca {banca} explorou a fronteira entre Concussão (verbo EXIGIR - Art. 316) e Corrupção Passiva (verbos SOLICITAR ou RECEBER - Art. 317)."
+                justificativa = (
+                    f"Gabarito: Alternativa B.\n\n"
+                    f"- B) CORRETA: É a exata literalidade do Art. 316 do CP (crime de Concussão).\n"
+                    f"- A) Incorreta: Exigir é concussão, não corrupção passiva.\n"
+                    f"- C) Incorreta: Prevaricação (Art. 319) visa satisfazer 'interesse ou sentimento pessoal', sem exigência pecuniária."
+                )
+
+        # 2. DIREITO ADMINISTRATIVO
+        elif "adm" in disc_lower:
+            if is_cebraspe:
+                enunciado = (
+                    f"A respeito de {disciplina} e {assunto}, julgue o item a seguir:\n\n"
+                    f"A Administração Pública, no exercício de sua autotutela, pode revogar atos administrativos discricionários a qualquer tempo, "
+                    f"mesmo quando deles já tenham decorrido efeitos concretos com direito adquirido constituído em favor de terceiros de boa-fé, "
+                    f"bastando a invocação da conveniência e da oportunidade."
+                )
+                alternativas = [
+                    AlternativaOutput(letra="C", texto="Certo"),
+                    AlternativaOutput(letra="E", texto="Errado"),
+                ]
+                correta = "E"
+                pegadinha = f"A banca {banca} omitiu a ressalva fundamental da Súmula 473 do STF: a revogação NÃO alcança direitos adquiridos."
+                justificativa = (
+                    f"Gabarito: ERRADO.\n\n"
+                    f"Conforme a Súmula 473 do STF e o Art. 53 da Lei 9.784/99, a Administração pode revogar atos por conveniência e oportunidade, "
+                    f"mas expressamente ressalvados os DIREITOS ADQUIRIDOS."
+                )
+            else:
+                enunciado = f"Em relação às diretrizes de {disciplina}, no tópico {assunto}, assinale a opção correta:"
+                alternativas = [
+                    AlternativaOutput(letra="A", texto="O princípio da presunção de legitimidade e veracidade dos atos administrativos é absoluto (juris et de jure)."),
+                    AlternativaOutput(letra="B", texto="A presunção de legitimidade transfere o ônus da prova de eventual vício para o administrado, tratando-se de presunção relativa (juris tantum)."),
+                    AlternativaOutput(letra="C", texto="Os atos administrativos vinculados podem ser revogados motivadamente pelo chefe do Poder Executivo."),
+                    AlternativaOutput(letra="D", texto="A autoexecutoriedade autoriza o uso da coerção mesmo em hipóteses sem previsão legal expressa ou urgência."),
+                    AlternativaOutput(letra="E", texto="A competência administrativa é passível de renúncia graciosa a critério da autoridade delegante."),
+                ]
+                correta = "B"
+                pegadinha = f"A banca {banca} tentou confundir presunção absoluta com presunção relativa."
+                justificativa = (
+                    f"Gabarito: Alternativa B.\n\n"
+                    f"- B) CORRETA: A presunção de legitimidade é relativa (juris tantum) e opera a inversão do ônus probatório.\n"
+                    f"- D+E) Incorretas: Competência é irrenunciável (Art. 11 da Lei 9.784/99)."
+                )
+
+        # 3. DIREITO CONSTITUCIONAL / OUTROS
         else:
-            enunciado = (
-                f"A respeito das normas aplicáveis a {disciplina}, com ênfase em {assunto}, "
-                f"assinale a alternativa juridicamente correta conforme o ordenamento pátrio:"
-            )
-            alternativas = [
-                AlternativaOutput(letra="A", texto="O princípio da publicidade é absoluto, não comportando hipóteses de sigilo nem mesmo para salvaguarda da segurança da sociedade e do Estado."),
-                AlternativaOutput(letra="B", texto="A presunção de legitimidade dos atos administrativos transfere o ônus da prova de sua ilegitimidade para quem a alega, tratando-se de presunção relativa (juris tantum)."),
-                AlternativaOutput(letra="C", texto="Os atos administrativos vinculados admitem revogação por conveniência e oportunidade desde que haja parecer prévio do órgão jurídico competente."),
-                AlternativaOutput(letra="D", texto="A motivação é prescindível em todos os atos discricionários da Administração Pública direta e indireta."),
-                AlternativaOutput(letra="E", texto="A competência administrativa é passível de renúncia total e incondicional por parte de seu titular."),
-            ]
-            correta = "B"
-            pegadinha = (
-                f"A banca {banca} tentou confundir os conceitos de presunção absoluta vs presunção relativa nos atos administrativos, "
-                f"além de sugerir erradamente que atos vinculados podem ser revogados por conveniência."
-            )
-            justificativa = (
-                f"Gabarito: Alternativa B.\n\n"
-                f"Análise detalhada das alternativas:\n"
-                f"- A) Incorreta: O Art. 5º, XXXIII da CF/88 autoriza o sigilo quando imprescindível à segurança da sociedade e do Estado.\n"
-                f"- B) CORRETA: A presunção de legitimidade e veracidade é relativa (juris tantum) e inverte o ônus da prova.\n"
-                f"- C) Incorreta: Atos vinculados NÃO comportam revogação (apenas anulação, se ilegais).\n"
-                f"- D) Incorreta: Atos discricionários também exigem motivação quando afetam direitos ou interesses (Art. 50 da Lei 9.784/99).\n"
-                f"- E) Incorreta: A competência administrativa é irrenunciável (Art. 11 da Lei 9.784/99).\n\n"
-                f"💡 [Dica de Concurso]: Questão gerada pela Matriz de DNA de Bancas em Modo Simulado. "
-                f"Para IA ao vivo sem restrições, configure sua chave 'AIzaSy...' em backend/.env."
-            )
+            if is_cebraspe:
+                enunciado = (
+                    f"No que concerne a {disciplina}, especificamente quanto a {assunto}, julgue a afirmativa a seguir:\n\n"
+                    f"A casa é asilo inviolável do indivíduo, ninguém nela podendo penetrar sem consentimento do morador, "
+                    f"salvo em caso de flagrante delito ou desastre, ou para prestar socorro, ou, a qualquer momento do dia ou da noite, "
+                    f"desde que amparado por expressa e fundamentada determinação judicial."
+                )
+                alternativas = [
+                    AlternativaOutput(letra="C", texto="Certo"),
+                    AlternativaOutput(letra="E", texto="Errado"),
+                ]
+                correta = "E"
+                pegadinha = f"A banca {banca} trocou a restrição constitucional 'durante o dia' por 'a qualquer momento do dia ou da noite'."
+                justificativa = (
+                    f"Gabarito: ERRADO.\n\n"
+                    f"Nos termos literais do Art. 5º, inciso XI da CF/88: por determinação judicial, o ingresso só é permitido DURANTE O DIA. "
+                    f"Durante a noite sem consentimento, apenas em flagrante delito, desastre ou socorro."
+                )
+            else:
+                enunciado = f"Com base no ordenamento constitucional brasileiro acerca de {assunto}, assinale a alternativa correta:"
+                alternativas = [
+                    AlternativaOutput(letra="A", texto="O direito à intimidade e à vida privada são direitos de segunda geração com caráter eminentemente prestacional."),
+                    AlternativaOutput(letra="B", texto="As normas definidoras dos direitos e das garantias fundamentais têm aplicação imediata, nos termos do § 1º do Art. 5º da CF/88."),
+                    AlternativaOutput(letra="C", texto="A criação de associações e, na forma da lei, a de cooperativas independem de autorização, sendo porém permitida a interferência estatal em seu funcionamento."),
+                    AlternativaOutput(letra="D", texto="A prisão civil por dívida de depositário infiel permanece plenamente admitida e respaldada pela jurisprudência sumulada do STF."),
+                    AlternativaOutput(letra="E", texto="A prática do racismo constitui crime inafiançável e prescritível após o transcurso do prazo de 20 anos."),
+                ]
+                correta = "B"
+                pegadinha = f"A banca {banca} tentou camuflar a redação exata do § 1º do Art. 5º da Constituição Federal."
+                justificativa = (
+                    f"Gabarito: Alternativa B.\n\n"
+                    f"- B) CORRETA: Conforme o Art. 5º, § 1º da CF/88: 'As normas definidoras dos direitos e garantias fundamentais têm aplicação imediata'.\n"
+                    f"- D) Incorreta: Súmula Vinculante 25 do STF veda a prisão civil do depositário infiel.\n"
+                    f"- E) Incorreta: Racismo é inafiançável e IMPRESCRITÍVEL (Art. 5º, XLII)."
+                )
 
         return QuestaoIneditaOutput(
             tipo_questao="Certo/Errado" if is_cebraspe else "Múltipla Escolha",

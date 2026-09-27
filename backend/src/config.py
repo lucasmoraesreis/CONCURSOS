@@ -20,7 +20,20 @@ class Settings(BaseSettings):
 
     # Google Gemini
     gemini_api_key: str = ""
-    gemini_model: str = "gemini-2.5-flash"
+    gemini_model: str = "gemini-3.6-flash"
+
+    # Groq (Ultra-rápido)
+    groq_api_key: str = ""
+    groq_model: str = "qwen/qwen3.8-27b"
+
+    # OpenRouter (Multi-Model Gateway)
+    openrouter_api_key: str = ""
+    openrouter_model: str = "openai/gpt-4o-mini"
+
+    # Cloudflare Workers AI
+    cloudflare_account_id: str = "a798cd585ada98d35b0d64d32fc8fa13"
+    cloudflare_api_token: str = ""
+    cloudflare_model: str = "@cf/meta/llama-3.1-8b-instruct"
 
     model_config = {
         "env_file": [str(PROJECT_ROOT / ".env"), str(Path(__file__).resolve().parent.parent / ".env")],
@@ -36,8 +49,12 @@ class Settings(BaseSettings):
 
     @property
     def async_database_url(self) -> str:
-        """Garante prefixo postgresql+asyncpg:// para conexões assíncronas."""
+        """Garante prefixo correto para conexões assíncronas (asyncpg ou aiosqlite)."""
         url = self.database_url.strip()
+        if url.startswith("sqlite"):
+            if not url.startswith("sqlite+aiosqlite://"):
+                return url.replace("sqlite://", "sqlite+aiosqlite://", 1)
+            return url
         if url.startswith("postgres://"):
             return url.replace("postgres://", "postgresql+asyncpg://", 1)
         if url.startswith("postgresql://") and not url.startswith("postgresql+asyncpg://"):

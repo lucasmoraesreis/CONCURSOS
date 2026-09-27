@@ -12,6 +12,7 @@ dist/
 frontend/dist/
 build/
 *.db
+!questoes.db
 *.sqlite
 *.pdf
 data/
@@ -22,3 +23,9 @@ backend/logs/
 .idea/
 .gemini/
 .agents/
+*.egg-info/
+# Regras de Blindagem Automática SecOps
+.env.*.local
+*.pem
+*.key
+data/pdfs/

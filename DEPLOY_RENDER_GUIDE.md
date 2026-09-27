@@ -32,9 +32,9 @@ Assim que o script terminar, acerte os seguintes passos no painel da Render:
 
 ### 2. Preencher a Chave da IA e Aplicar
 1. A Render lerá o arquivo `render.yaml` automaticamente e exibirá os 3 recursos gratuitos que serão criados:
-   - 🗄️ **`qconcursos-db`**: Banco de Dados PostgreSQL 16 (Plano Free).
-   - 🐍 **`qconcursos-backend`**: API FastAPI via Docker (Plano Free).
-   - ⚛️ **`qconcursos-frontend`**: Interface React via Docker Nginx (Plano Free).
+   - 🗄️ **`concursos-db`**: Banco de Dados PostgreSQL 16 (Plano Free).
+   - 🐍 **`concursos-backend`**: API FastAPI via Docker (Plano Free).
+   - ⚛️ **`concursos-frontend`**: Interface React via Docker Nginx (Plano Free).
 2. No campo **`GEMINI_API_KEY`**, cole a sua chave do Google Gemini:
    ```text
    sua_chave_do_gemini_aqui
@@ -48,4 +48,4 @@ Assim que o script terminar, acerte os seguintes passos no painel da Render:
 - A Render provisiona o banco PostgreSQL 16 com a extensão `pgvector`.
 - O container do backend inicializa, executa automaticamente o comando `alembic upgrade head` (criando todas as tabelas, índices HNSW e modelos de usuários/desempenho).
 - O container do frontend compila o React com Tailwind v4 e sobe o Nginx Alpine com proxy reverso configurado.
-- Você receberá um link público seguro com HTTPS (ex: `https://qconcursos-frontend.onrender.com`) pronto para usar e compartilhar!
+- Você receberá um link público seguro com HTTPS (ex: `https://concursos-frontend.onrender.com`) pronto para usar e compartilhar!

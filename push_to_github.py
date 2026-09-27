@@ -264,7 +264,7 @@ def main():
 
     # 8. Commit seguro
     run_cmd(
-        ["git", "commit", "-m", "Deploy Blindado: Sistema Qconcursos com IA e pgvector"],
+        ["git", "commit", "-m", "Deploy Blindado: Plataforma de Concursos com IA e pgvector"],
         "Criando commit do projeto com blindagem SecOps",
         check=False,
     )

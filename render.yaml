@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: questoes-plataforma-completa
+    env: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    region: ohio
+    healthCheckPath: /health
+    envVars:
+      - key: GEMINI_API_KEY
+        sync: false
+      # As chaves abaixo são opcionais, deixe 'sync: false' para que o usuário
+      # preencha no dashboard caso queira habilitar Groq ou Cloudflare
+      - key: GROQ_API_KEY
+        sync: false
+      - key: CLOUDFLARE_API_TOKEN
+        sync: false

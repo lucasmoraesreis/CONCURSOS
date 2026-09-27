@@ -1,0 +1,174 @@
+version: "3.9"
+
+# ==============================================================================
+# DOCKER COMPOSE HIPERESCALA (C10M ARCHITECTURE - 10 MILHÕES DE USUÁRIOS)
+# ==============================================================================
+
+services:
+  # ----------------------------------------------------------------------------
+  # 1. Edge Load Balancer & Microcache: Nginx C10M
+  # ----------------------------------------------------------------------------
+  edge-proxy:
+    image: nginx:alpine
+    container_name: questoes_edge_proxy
+    restart: always
+    ports:
+      - "${PORT:-80}:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - nginx_cache:/var/cache/nginx
+    depends_on:
+      - backend-1
+      - backend-2
+      - backend-3
+      - backend-4
+      - frontend
+    networks:
+      - edge-network
+      - backend-network
+    deploy:
+      resources:
+        limits:
+          cpus: "4.0"
+          memory: 4096M
+
+  # ----------------------------------------------------------------------------
+  # 2. Redis Distributed L2 Cache
+  # ----------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: questoes_redis_prod
+    restart: always
+    command: redis-server --maxmemory 2gb --maxmemory-policy allkeys-lru --save "" --appendonly no
+    networks:
+      - backend-network
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2048M
+
+  # ----------------------------------------------------------------------------
+  # 3. PgBouncer Connection Multiplexer (Transaction Pooling)
+  # ----------------------------------------------------------------------------
+  pgbouncer:
+    image: edoburu/pgbouncer:latest
+    container_name: questoes_pgbouncer
+    restart: always
+    environment:
+      DB_USER: ${POSTGRES_USER:-questoes_admin}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-questoes_secret_2024}
+      DB_HOST: postgres
+      DB_NAME: ${POSTGRES_DB:-questoes_concursos}
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: 50000
+      DEFAULT_POOL_SIZE: 50
+    volumes:
+      - ./pgbouncer.ini:/etc/pgbouncer/pgbouncer.ini:ro
+    depends_on:
+      - postgres
+    networks:
+      - backend-network
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 1024M
+
+  # ----------------------------------------------------------------------------
+  # 4. Backend Cluster (4 Réplicas com balanceamento de carga)
+  # ----------------------------------------------------------------------------
+  backend-1: &backend-template
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    restart: always
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-questoes_admin}:${POSTGRES_PASSWORD:-questoes_secret_2024}@pgbouncer:6432/${POSTGRES_DB:-questoes_concursos}
+      REDIS_URL: redis://redis:6379/0
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+      CORS_ORIGINS: "*"
+    depends_on:
+      - pgbouncer
+      - redis
+    networks:
+      - backend-network
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2048M
+
+  backend-2:
+    <<: *backend-template
+
+  backend-3:
+    <<: *backend-template
+
+  backend-4:
+    <<: *backend-template
+
+  # ----------------------------------------------------------------------------
+  # 5. Frontend React SPA
+  # ----------------------------------------------------------------------------
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    restart: always
+    networks:
+      - edge-network
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 1024M
+
+  # ----------------------------------------------------------------------------
+  # 6. PostgreSQL 16 com pgvector
+  # ----------------------------------------------------------------------------
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: questoes_db_hyperscale
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-questoes_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-questoes_secret_2024}
+      POSTGRES_DB: ${POSTGRES_DB:-questoes_concursos}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - pgdata_hyperscale:/var/lib/postgresql/data
+      - ../database/init.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
+      - ../database/002_pgvector_semantic_search.sql:/docker-entrypoint-initdb.d/02_pgvector.sql:ro
+    networks:
+      - backend-network
+    command: >
+      postgres
+      -c max_connections=200
+      -c shared_buffers=1GB
+      -c effective_cache_size=3GB
+      -c work_mem=16MB
+      -c maintenance_work_mem=256MB
+      -c random_page_cost=1.1
+    deploy:
+      resources:
+        limits:
+          cpus: "4.0"
+          memory: 4096M
+
+# ------------------------------------------------------------------------------
+# Redes e Volumes
+# ------------------------------------------------------------------------------
+networks:
+  edge-network:
+    driver: bridge
+  backend-network:
+    driver: bridge
+
+volumes:
+  pgdata_hyperscale:
+    driver: local
+  nginx_cache:
+    driver: local

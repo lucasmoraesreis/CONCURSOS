@@ -1,22 +1,20 @@
 /**
  * GeneratorModal — Modal do Gerador de Questões Inéditas ("Hacker de Bancas")
  *
- * Permite ao concurseiro forjar questões inéditas simulando o estilo e as pegadinhas
- * das bancas mais disputadas do Brasil (Cebraspe, FGV, FCC, IADES, Quadrix).
+ * Permite ao concurseiro configurar banca, disciplina, assunto, dificuldade e provedor.
+ * Ao clicar "Gerar", navega para a página dedicada de questões geradas.
  */
 
 import { useState } from 'react';
 import { motion } from 'framer-motion';
 import {
-  X, Sparkles, Wand2, Loader2, CheckCircle2, AlertTriangle, Lightbulb
+  X, Sparkles, Wand2, Bot, Zap,
 } from 'lucide-react';
-import { gerarQuestaoInedita } from '../../api/client';
-import type { Questao, QuestaoGeradaResponse } from '../../types';
+import { useGeneratorStore } from '../../stores/generatorStore';
 
 interface GeneratorModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onQuestionGenerated?: (questao: Questao) => void;
 }
 
 const BANCAS = ['Cebraspe', 'FGV', 'FCC', 'IADES', 'Quadrix'];
@@ -31,23 +29,16 @@ const SUGESTOES_DISCIPLINAS = [
   { disciplina: 'Direito Penal', assunto: 'Crimes Contra a Administração Pública' },
 ];
 
-export function GeneratorModal({ isOpen, onClose, onQuestionGenerated }: GeneratorModalProps) {
+export function GeneratorModal({ isOpen, onClose }: GeneratorModalProps) {
   const [banca, setBanca] = useState('Cebraspe');
   const [disciplina, setDisciplina] = useState('Direito Constitucional');
   const [assunto, setAssunto] = useState('Artigo 5º - Direitos e Garantias Fundamentais');
   const [tipoQuestao, setTipoQuestao] = useState('Certo/Errado');
   const [dificuldade, setDificuldade] = useState('Difícil');
+  const [provider, setProvider] = useState('auto');
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [generationStep, setGenerationStep] = useState('');
-  const [result, setResult] = useState<QuestaoGeradaResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  // Estados de resposta interativa da questão gerada
-  const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
-  const [showAnswer, setShowAnswer] = useState(false);
-  const [showPegadinha, setShowPegadinha] = useState(false);
-  const [showJustificativa, setShowJustificativa] = useState(false);
+  const navigateToGenerator = useGeneratorStore((s) => s.navigateToGenerator);
 
   // Auto-ajustar formato ao mudar para Cebraspe
   function handleBancaChange(newBanca: string) {
@@ -59,76 +50,26 @@ export function GeneratorModal({ isOpen, onClose, onQuestionGenerated }: Generat
     }
   }
 
-  async function handleGenerate(e: React.FormEvent) {
+  function handleGenerate(e: React.FormEvent) {
     e.preventDefault();
     if (!disciplina.trim() || !assunto.trim()) {
-      setError('Por favor preencha a disciplina e o assunto.');
+      setErrorMsg('Por favor preencha a disciplina e o assunto.');
       return;
     }
 
-    setError(null);
-    setIsGenerating(true);
-    setResult(null);
-    setSelectedAnswer(null);
-    setShowAnswer(false);
-    setShowPegadinha(false);
-    setShowJustificativa(false);
+    setErrorMsg(null);
 
-    setGenerationStep('Mapeando matriz de pegadinhas da banca...');
+    // Navegar para a página de questões geradas com as configs
+    navigateToGenerator({
+      banca,
+      disciplina: disciplina.trim(),
+      assunto: assunto.trim(),
+      tipoQuestao,
+      dificuldade,
+      provider,
+    });
 
-    const timer1 = setTimeout(() => {
-      setGenerationStep('Engenhando distratores cognitivos com IA...');
-    }, 1800);
-
-    const timer2 = setTimeout(() => {
-      setGenerationStep('Calculando vetor de embedding e persistindo no banco...');
-    }, 4000);
-
-    try {
-      const data = await gerarQuestaoInedita({
-        banca,
-        disciplina,
-        assunto,
-        tipo_questao: tipoQuestao,
-        dificuldade,
-      });
-
-      setResult(data);
-
-      // Converte para formato Questao e notifica parent
-      if (onQuestionGenerated) {
-        const questaoFormatada: Questao = {
-          id: data.id || `inedita-${Date.now()}`,
-          numero_questao: 1,
-          tipo_questao: data.tipo_questao,
-          enunciado: data.enunciado,
-          alternativa_correta: data.alternativa_correta,
-          justificativa_ia: data.justificativa_ia,
-          alternativas: data.alternativas.map((alt, idx) => ({
-            id: `alt-${idx}`,
-            letra: alt.letra,
-            texto: alt.texto,
-            is_correta: alt.letra === data.alternativa_correta,
-          })),
-          disciplina_nome: data.disciplina,
-          assunto_nome: data.assunto,
-          concurso_orgao: 'Simulado Hacker de Bancas',
-          concurso_cargo: 'Questão Inédita',
-          concurso_ano: 2026,
-          banca_nome: data.banca_emulada,
-          is_inedita: true,
-          engenharia_da_pegadinha: data.engenharia_da_pegadinha,
-        };
-        onQuestionGenerated(questaoFormatada);
-      }
-    } catch (err: any) {
-      setError(err?.response?.data?.detail || 'Erro ao comunicar com a IA. Verifique sua chave de API.');
-    } finally {
-      clearTimeout(timer1);
-      clearTimeout(timer2);
-      setIsGenerating(false);
-      setGenerationStep('');
-    }
+    onClose();
   }
 
   if (!isOpen) return null;
@@ -174,6 +115,54 @@ export function GeneratorModal({ isOpen, onClose, onQuestionGenerated }: Generat
         <div className="p-6 sm:p-8 max-h-[80vh] overflow-y-auto space-y-6">
           {/* Formulário de Configuração */}
           <form onSubmit={handleGenerate} className="space-y-5">
+            {/* Seletor de IA com Failover Automático */}
+            <div className="p-4 rounded-2xl bg-surface-800/50 border border-surface-700/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-xl bg-purple-500/10 text-purple-400 border border-purple-500/20 shrink-0">
+                  <Bot size={20} />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs font-bold text-surface-200 uppercase tracking-wider">
+                      Modelo / Provedor de IA
+                    </label>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                      Cascata & Failover Ativos
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-surface-400 mt-0.5">
+                    Troca automática instantânea caso um provedor atinja limite (429) ou instabilidade (503)
+                  </p>
+                </div>
+              </div>
+              <div className="sm:w-80 shrink-0">
+                <select
+                  value={provider}
+                  onChange={(e) => setProvider(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl glass text-xs font-semibold text-surface-100 focus:outline-none focus:ring-2 focus:ring-purple-500/50 cursor-pointer"
+                >
+                  <option value="auto" className="bg-surface-800 text-surface-100 font-medium">
+                    🤖 Auto (Cascata com Failover Inteligente)
+                  </option>
+                  <option value="openrouter" className="bg-surface-800 text-surface-100 font-medium">
+                    ⚡ OpenRouter (OpenAI GPT-4o Mini)
+                  </option>
+                  <option value="gemini" className="bg-surface-800 text-surface-100 font-medium">
+                    ✨ Google Gemini (Gemini 3.6 Flash)
+                  </option>
+                  <option value="groq" className="bg-surface-800 text-surface-100 font-medium">
+                    🚀 Groq (Qwen 3.8 27B / Ultra-Rápido)
+                  </option>
+                  <option value="cloudflare" className="bg-surface-800 text-surface-100 font-medium">
+                    ☁️ Cloudflare Workers AI
+                  </option>
+                  <option value="simulado" className="bg-surface-800 text-surface-100 font-medium">
+                    🛡️ Matriz Hacker (Modo Offline Simulado)
+                  </option>
+                </select>
+              </div>
+            </div>
+
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               {/* Banca */}
               <div>
@@ -280,146 +269,37 @@ export function GeneratorModal({ isOpen, onClose, onQuestionGenerated }: Generat
               </div>
             </div>
 
-            {error && (
+            {errorMsg && (
               <div className="p-4 rounded-xl bg-red-500/15 border border-red-500/30 text-red-300 text-xs flex items-center gap-2">
-                <AlertTriangle size={16} className="shrink-0" />
-                <span>{error}</span>
+                <span>⚠️</span>
+                <span>{errorMsg}</span>
               </div>
             )}
+
+            {/* Info box sobre o novo fluxo */}
+            <div className="p-4 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 flex items-start gap-3">
+              <Zap size={18} className="text-indigo-400 shrink-0 mt-0.5" />
+              <div>
+                <p className="text-xs font-semibold text-indigo-300">Geração em Lote</p>
+                <p className="text-[11px] text-surface-400 mt-0.5">
+                  Ao clicar em "Gerar", você será redirecionado para uma página dedicada com <strong className="text-surface-200">5 questões</strong> geradas instantaneamente pela IA. 
+                  No final, clique para gerar mais 5 — quantas vezes quiser!
+                </p>
+              </div>
+            </div>
 
             {/* Botão de Gerar */}
             <div className="pt-2 flex justify-end">
               <button
                 type="submit"
-                disabled={isGenerating}
-                className="w-full sm:w-auto px-6 py-3.5 rounded-xl bg-gradient-to-r from-purple-600 via-indigo-600 to-primary-600 text-white font-semibold text-sm shadow-lg shadow-purple-600/30 hover:opacity-95 disabled:opacity-50 transition-all duration-200 flex items-center justify-center gap-2"
+                className="w-full sm:w-auto px-6 py-3.5 rounded-xl bg-gradient-to-r from-purple-600 via-indigo-600 to-primary-600 text-white font-semibold text-sm shadow-lg shadow-purple-600/30 hover:opacity-95 transition-all duration-200 flex items-center justify-center gap-2 cursor-pointer"
               >
-                {isGenerating ? (
-                  <>
-                    <Loader2 size={18} className="animate-spin" />
-                    <span>{generationStep || 'Forjando Questão...'}</span>
-                  </>
-                ) : (
-                  <>
-                    <Wand2 size={18} />
-                    <span>Gerar Questão Inédita com Pegadinha</span>
-                  </>
-                )}
+                <Wand2 size={18} />
+                <span>Gerar 5 Questões Inéditas</span>
+                <Sparkles size={16} className="text-purple-200" />
               </button>
             </div>
           </form>
-
-          {/* Questão Gerada com Interatividade */}
-          {result && (
-            <div className="mt-8 pt-8 border-t border-surface-800 space-y-5">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="px-3 py-1 rounded-lg bg-purple-500/20 border border-purple-500/30 text-xs font-bold text-purple-300 flex items-center gap-1.5">
-                    <Sparkles size={14} />
-                    Questão Forjada com Sucesso
-                  </span>
-                  <span className="px-2.5 py-1 rounded-lg bg-surface-800 text-xs text-surface-300">
-                    Banca: {result.banca_emulada}
-                  </span>
-                </div>
-              </div>
-
-              {/* Card da Questão */}
-              <div className="p-6 rounded-2xl bg-surface-800/40 border border-surface-700/50 space-y-4">
-                <p className="text-sm sm:text-base leading-relaxed text-surface-100 whitespace-pre-wrap font-medium">
-                  {result.enunciado}
-                </p>
-
-                {/* Alternativas */}
-                <div className="space-y-2 pt-2">
-                  {result.alternativas.map((alt: { letra: string; texto: string }) => {
-                    const isSelected = selectedAnswer === alt.letra;
-                    const isCorrect = alt.letra === result.alternativa_correta;
-
-                    let btnClass = 'border-surface-700/50 hover:border-surface-600 hover:bg-surface-700/30 text-surface-200';
-                    if (showAnswer) {
-                      if (isCorrect) btnClass = 'border-emerald-500 bg-emerald-500/10 text-emerald-200';
-                      else if (isSelected) btnClass = 'border-red-500 bg-red-500/10 text-red-200';
-                      else btnClass = 'border-surface-800 opacity-50 text-surface-400';
-                    } else if (isSelected) {
-                      btnClass = 'border-purple-500 bg-purple-500/10 text-purple-200';
-                    }
-
-                    return (
-                      <button
-                        key={alt.letra}
-                        onClick={() => {
-                          if (showAnswer) return;
-                          setSelectedAnswer(alt.letra);
-                          setShowAnswer(true);
-                        }}
-                        disabled={showAnswer}
-                        className={`w-full text-left px-4 py-3 rounded-xl border transition-all flex items-start gap-3 ${btnClass}`}
-                      >
-                        <span className="shrink-0 w-7 h-7 rounded-lg bg-surface-700/60 flex items-center justify-center text-xs font-bold">
-                          {alt.letra}
-                        </span>
-                        <span className="text-sm pt-0.5 leading-relaxed">{alt.texto}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {/* Feedback e Botões de Revelação */}
-                {showAnswer && (
-                  <div className="space-y-3 pt-4">
-                    <div className={`p-4 rounded-xl flex items-center gap-3 text-sm font-medium ${
-                      selectedAnswer === result.alternativa_correta
-                        ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-300'
-                        : 'bg-red-500/10 border border-red-500/20 text-red-300'
-                    }`}>
-                      <CheckCircle2 size={18} />
-                      {selectedAnswer === result.alternativa_correta
-                        ? 'Sensacional! Você não caiu na pegadinha da banca!'
-                        : `Você caiu na armadilha da banca! Gabarito: ${result.alternativa_correta}`
-                      }
-                    </div>
-
-                    {/* Revelar Pegadinha */}
-                    <button
-                      onClick={() => setShowPegadinha(!showPegadinha)}
-                      className="w-full text-left p-4 rounded-xl bg-purple-950/30 border border-purple-500/30 text-purple-300 text-sm font-medium flex items-center justify-between"
-                    >
-                      <span className="flex items-center gap-2">
-                        <AlertTriangle size={16} />
-                        Análise da Banca & Engenharia da Pegadinha
-                      </span>
-                      <span>{showPegadinha ? '▲ Ocultar' : '▼ Revelar Segredo'}</span>
-                    </button>
-
-                    {showPegadinha && (
-                      <div className="p-4 rounded-xl bg-purple-950/20 border border-purple-500/20 text-xs sm:text-sm text-surface-200 leading-relaxed whitespace-pre-wrap">
-                        {result.engenharia_da_pegadinha}
-                      </div>
-                    )}
-
-                    {/* Revelar Justificativa */}
-                    <button
-                      onClick={() => setShowJustificativa(!showJustificativa)}
-                      className="w-full text-left p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300 text-sm font-medium flex items-center justify-between"
-                    >
-                      <span className="flex items-center gap-2">
-                        <Lightbulb size={16} />
-                        Justificativa Jurídica / Teórica
-                      </span>
-                      <span>{showJustificativa ? '▲ Ocultar' : '▼ Revelar'}</span>
-                    </button>
-
-                    {showJustificativa && (
-                      <div className="p-4 rounded-xl bg-surface-900 border border-surface-700/50 text-xs sm:text-sm text-surface-300 leading-relaxed whitespace-pre-wrap">
-                        {result.justificativa_ia}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
         </div>
       </motion.div>
     </div>
