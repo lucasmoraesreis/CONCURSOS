@@ -43,7 +43,7 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
 
 # Copia o código do backend e os arquivos principais
 COPY backend/ ./backend/
-COPY .env ./
+COPY .env* ./
 # Copia o banco de dados com as 6.124 questões (se existir)
 COPY questoes.db* ./
 

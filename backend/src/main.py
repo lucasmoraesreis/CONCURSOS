@@ -131,6 +131,10 @@ async def add_security_and_caching_headers(request, call_next):
 
     return response
 
+@app.get("/health")
+async def health_check():
+    return {"status": "ok"}
+
 # Registra routers
 app.include_router(auth.router)
 app.include_router(concursos.router)
