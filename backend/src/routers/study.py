@@ -79,22 +79,7 @@ REVIEW_INTERVAL_DAYS = [1, 3, 7, 15, 30, 60]
 
 from src.services.auth import get_current_user
 
-# Removed _ensure_demo_user
-    result = await db.execute(select(Usuario).where(Usuario.email == DEMO_USER_EMAIL))
-    user = result.scalar_one_or_none()
-    if user:
-        return user
 
-    user = Usuario(
-        id=uuid.uuid4(),
-        nome="Aluno Demo",
-        email=DEMO_USER_EMAIL,
-        senha_hash="local-demo",
-        plano_assinatura="FREE",
-    )
-    db.add(user)
-    await db.flush()
-    return user
 
 
 async def _get_or_create_state(
@@ -406,7 +391,8 @@ async def save_question_note(
     questao_id: UUID,
     payload: StudyNoteRequest,
     db: AsyncSession = Depends(get_db),
-, current_user: Usuario = Depends(get_current_user)):
+    current_user: Usuario = Depends(get_current_user)
+):
     user = current_user
     state = await _get_or_create_state(db, user, questao_id)
     state.note = payload.note.strip()[:4000] or None
@@ -425,7 +411,8 @@ async def report_question(
     questao_id: UUID,
     payload: StudyReportRequest,
     db: AsyncSession = Depends(get_db),
-, current_user: Usuario = Depends(get_current_user)):
+    current_user: Usuario = Depends(get_current_user)
+):
     user = current_user
     state = await _get_or_create_state(db, user, questao_id)
     state.reported_issue = payload.issue.strip()[:4000]
@@ -737,7 +724,8 @@ async def get_coverage(db: AsyncSession = Depends(get_db), current_user: Usuario
 async def ask_study_tutor(
     payload: TutorChatRequest,
     db: AsyncSession = Depends(get_db),
-, current_user: Usuario = Depends(get_current_user)):
+    current_user: Usuario = Depends(get_current_user)
+):
     question_result = await db.execute(
         select(Questao)
         .where(Questao.id == payload.questao_id)
@@ -1054,7 +1042,8 @@ async def get_flashcards(
 async def review_flashcard(
     payload: FlashcardReviewRequest,
     db: AsyncSession = Depends(get_db),
-, current_user: Usuario = Depends(get_current_user)):
+    current_user: Usuario = Depends(get_current_user)
+):
     user = current_user
     days_map = {0: 1, 2: 2, 4: 5, 5: 10}
     interval = days_map.get(payload.rating, 3)
@@ -1343,7 +1332,8 @@ def _parse_edital_fallback(text: str) -> list[dict]:
 async def import_edital_conteudo(
     req: EditalImportRequest,
     db: AsyncSession = Depends(get_db),
-, current_user: Usuario = Depends(get_current_user)):
+    current_user: Usuario = Depends(get_current_user)
+):
     """
     Importa conteúdo programático do edital:
     1. Extrai disciplinas e tópicos estruturados com IA Socrática (ou fallback).

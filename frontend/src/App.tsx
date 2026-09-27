@@ -409,7 +409,8 @@ function App() {
   const currentView = useGeneratorStore((s) => s.currentView);
   const setDisciplinaId = useFilterStore((s) => s.setDisciplinaId);
 
-  const isAuthenticated = useAuthStore(s => s.isAuthenticated());
+  const token = useAuthStore(s => s.token);
+  const isAuthenticated = !!token;
   const logout = useAuthStore(s => s.logout);
   const user = useAuthStore(s => s.user);
 
