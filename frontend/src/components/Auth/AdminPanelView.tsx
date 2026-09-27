@@ -16,14 +16,14 @@ export function AdminPanelView() {
   const { data: users, isLoading } = useQuery({
     queryKey: ['admin-users'],
     queryFn: async () => {
-      const { data } = await api.get('/api/auth/users');
+      const { data } = await api.get('/auth/users');
       return data;
     }
   });
 
   const createMutation = useMutation({
     mutationFn: async (newUser: any) => {
-      const { data } = await api.post('/api/auth/users', newUser);
+      const { data } = await api.post('/auth/users', newUser);
       return data;
     },
     onSuccess: () => {
