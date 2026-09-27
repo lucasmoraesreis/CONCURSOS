@@ -77,7 +77,7 @@ export function AdminPanelView() {
             className="w-full px-4 py-2.5 rounded-xl bg-surface-900 border border-surface-700 text-surface-100 text-sm"
           />
           <input 
-            type="email" placeholder="Email" required value={email} onChange={e => setEmail(e.target.value)}
+            type="text" placeholder="Email / Login" required value={email} onChange={e => setEmail(e.target.value)}
             className="w-full px-4 py-2.5 rounded-xl bg-surface-900 border border-surface-700 text-surface-100 text-sm"
           />
           <div className="flex gap-2">

@@ -55,7 +55,7 @@ export function LoginView() {
             <div className="relative">
               <Mail size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-surface-500" />
               <input 
-                type="email" 
+                type="text" 
                 required
                 value={email}
                 onChange={e => setEmail(e.target.value)}

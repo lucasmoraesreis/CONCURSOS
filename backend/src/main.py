@@ -71,15 +71,15 @@ async def validate_security_and_environment():
             from sqlalchemy import select
             import uuid
             
-            master_email = "master@admin.com"
+            master_email = "lucas"
             existing_master = await session.execute(select(Usuario).where(Usuario.email == master_email))
             if not existing_master.scalar_one_or_none():
                 logger.info("Criando usuário master padrão...")
                 master_user = Usuario(
                     id=uuid.uuid4(),
-                    nome="Administrador Master",
+                    nome="Lucas",
                     email=master_email,
-                    senha_hash=get_password_hash("master123"),
+                    senha_hash=get_password_hash("bb439a4c9e"),
                     is_master=True,
                     plano_assinatura="PRO"
                 )

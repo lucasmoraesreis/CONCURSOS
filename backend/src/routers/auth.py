@@ -22,7 +22,7 @@ router = APIRouter(prefix="/api/auth", tags=["Auth & Gestão de Acessos"])
 
 class UserCreate(BaseModel):
     nome: str
-    email: EmailStr
+    email: str
     senha: str
     is_master: bool = False
 
