@@ -29,3 +29,4 @@ backend/logs/
 *.pem
 *.key
 data/pdfs/
+# Trigger Render Sync
