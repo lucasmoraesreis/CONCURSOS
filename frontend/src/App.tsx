@@ -40,6 +40,9 @@ const RaioXView = lazy(() => import('./components/Study/RaioXView').then(m => ({
 const EditalVerticalizadoView = lazy(() => import('./components/Study/EditalVerticalizadoView').then(m => ({ default: m.EditalVerticalizadoView })));
 const MentoriaPerformanceView = lazy(() => import('./components/Study/MentoriaPerformanceView').then(m => ({ default: m.MentoriaPerformanceView })));
 const SkillsHubView = lazy(() => import('./components/Study/SkillsHubView').then(m => ({ default: m.SkillsHubView })));
+import { LoginView } from './components/Auth/LoginView';
+import { AdminPanelView } from './components/Auth/AdminPanelView';
+import { useAuthStore } from './stores/authStore';
 
 function ViewLoadingSkeleton() {
   return (
@@ -66,8 +69,8 @@ type MainNavTab =
   | 'plano'
   | 'mentoria'
   | 'skills'
-  | 'cobertura';
-
+  | 'cobertura'
+  | 'admin';
 
 const CARREIRAS = [
   { id: '', label: 'Todas as Carreiras', icon: '🏛️' },
@@ -406,6 +409,10 @@ function App() {
   const currentView = useGeneratorStore((s) => s.currentView);
   const setDisciplinaId = useFilterStore((s) => s.setDisciplinaId);
 
+  const isAuthenticated = useAuthStore(s => s.isAuthenticated());
+  const logout = useAuthStore(s => s.logout);
+  const user = useAuthStore(s => s.user);
+
   // Widget de Ofensiva (Streaks)
   const { data: streakData } = useQuery({
     queryKey: ['study-streak'],
@@ -442,6 +449,10 @@ function App() {
 
   function handleStartSimulado() {
     setCurrentNavTab('simulado');
+  }
+
+  if (!isAuthenticated) {
+    return <LoginView />;
   }
 
   return currentView === 'generator' ? (
@@ -507,6 +518,14 @@ function App() {
                   className="md:hidden p-2 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-semibold text-xs shadow-md cursor-pointer"
                 >
                   <Sparkles size={16} />
+                </button>
+                
+                <button
+                  onClick={logout}
+                  title="Sair"
+                  className="p-2.5 rounded-2xl glass hover:bg-surface-800 text-surface-400 hover:text-red-400 cursor-pointer transition-all border border-surface-700/50"
+                >
+                  Sair
                 </button>
               </div>
 
@@ -647,6 +666,20 @@ function App() {
                   <span>Cobertura</span>
                 </button>
 
+                {user?.is_master && (
+                  <button
+                    onClick={() => setCurrentNavTab('admin')}
+                    className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+                      currentNavTab === 'admin'
+                        ? 'bg-amber-500 text-surface-950 shadow-md shadow-amber-500/30 font-bold'
+                        : 'text-amber-400/70 hover:text-amber-400'
+                    }`}
+                  >
+                    <span>🔑</span>
+                    <span>Admin</span>
+                  </button>
+                )}
+
               </nav>
 
               {/* Botões Desktop: Modo Zen e Hacker de Bancas */}
@@ -720,6 +753,10 @@ function App() {
 
               {currentNavTab === 'cobertura' && (
                 <DatabaseCoverageView />
+              )}
+
+              {currentNavTab === 'admin' && user?.is_master && (
+                <AdminPanelView />
               )}
 
             </Suspense>

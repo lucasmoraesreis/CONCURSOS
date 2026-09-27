@@ -19,7 +19,7 @@ from pathlib import Path
 from loguru import logger
 
 from src.config import settings
-from src.routers import concursos, disciplinas, assuntos, questoes, study, mentoria, skills
+from src.routers import auth, concursos, disciplinas, assuntos, questoes, study, mentoria, skills
 
 
 # Sincroniza configurações com os.environ se presentes no .env
@@ -64,6 +64,27 @@ async def validate_security_and_environment():
         async with get_db_session() as session:
             await seed_database_if_empty(session)
             await seed_real_questions_data(session)
+            
+            # Garante que o Master existe (mesmo se o seeder foi pulado)
+            from src.models import Usuario
+            from src.services.auth import get_password_hash
+            from sqlalchemy import select
+            import uuid
+            
+            master_email = "master@admin.com"
+            existing_master = await session.execute(select(Usuario).where(Usuario.email == master_email))
+            if not existing_master.scalar_one_or_none():
+                logger.info("Criando usuário master padrão...")
+                master_user = Usuario(
+                    id=uuid.uuid4(),
+                    nome="Administrador Master",
+                    email=master_email,
+                    senha_hash=get_password_hash("master123"),
+                    is_master=True,
+                    plano_assinatura="PRO"
+                )
+                session.add(master_user)
+                await session.commit()
     except Exception as e:
         logger.warning(f"Aviso de banco no startup: {e}. Verifique se o Docker/Supabase está acessível.")
 
@@ -111,6 +132,7 @@ async def add_security_and_caching_headers(request, call_next):
     return response
 
 # Registra routers
+app.include_router(auth.router)
 app.include_router(concursos.router)
 app.include_router(disciplinas.router)
 app.include_router(assuntos.router)

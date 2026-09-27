@@ -256,7 +256,7 @@ async def obter_cronograma_semanal():
 @router.get("/mentoria/ranking", response_model=RankingResponse)
 async def obter_ranking_concorrentes(
     db: AsyncSession = Depends(get_db),
-):
+, current_user: Usuario = Depends(get_current_user)):
     """
     Retorna o ranking comparativo com a posição do candidato em relação aos concorrentes reais.
     Calcula taxa de acertos, pontos líquidos simulados e percentil competitivo.

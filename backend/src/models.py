@@ -131,6 +131,8 @@ class Usuario(Base):
     email = Column(String(255), nullable=False, unique=True)
     senha_hash = Column(String(255), nullable=False)
     plano_assinatura = Column(String(20), nullable=False, default="FREE")
+    is_master = Column(Boolean, default=False, nullable=False)
+    is_active = Column(Boolean, default=True, nullable=False)
     criado_em = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     respostas = relationship("HistoricoResposta", back_populates="usuario", cascade="all, delete-orphan")

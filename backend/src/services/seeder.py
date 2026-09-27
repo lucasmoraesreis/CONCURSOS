@@ -23,6 +23,22 @@ async def seed_database_if_empty(db: AsyncSession):
             return
 
         logger.info("Banco de dados vazio! Executando Seed Automático de dados reais...")
+        from src.services.auth import get_password_hash
+
+        # 0. CRIAR USUÁRIO MASTER
+        master_email = "master@admin.com"
+        existing_master = await db.execute(select(Usuario).where(Usuario.email == master_email))
+        if not existing_master.scalar_one_or_none():
+            master_user = Usuario(
+                id=uuid.uuid4(),
+                nome="Administrador Master",
+                email=master_email,
+                senha_hash=get_password_hash("master123"),
+                is_master=True,
+                plano_assinatura="PRO"
+            )
+            db.add(master_user)
+            await db.flush()
 
         # 1. BANCAS
         bancas_data = [

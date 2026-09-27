@@ -77,7 +77,9 @@ DEMO_USER_EMAIL = "demo@local.study"
 REVIEW_INTERVAL_DAYS = [1, 3, 7, 15, 30, 60]
 
 
-async def _ensure_demo_user(db: AsyncSession) -> Usuario:
+from src.services.auth import get_current_user
+
+# Removed _ensure_demo_user
     result = await db.execute(select(Usuario).where(Usuario.email == DEMO_USER_EMAIL))
     user = result.scalar_one_or_none()
     if user:
@@ -171,8 +173,8 @@ def _rate(total: int, correct: int) -> float:
 
 
 @router.get("/dashboard", response_model=StudyDashboardResponse)
-async def get_study_dashboard(db: AsyncSession = Depends(get_db)):
-    user = await _ensure_demo_user(db)
+async def get_study_dashboard(db: AsyncSession = Depends(get_db), current_user: Usuario = Depends(get_current_user)):
+    user = current_user
     now = datetime.now(timezone.utc)
 
     total_answers = await db.scalar(
@@ -293,8 +295,8 @@ async def get_study_dashboard(db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/answer", response_model=StudyAnswerResponse)
-async def answer_question(payload: StudyAnswerRequest, db: AsyncSession = Depends(get_db)):
-    user = await _ensure_demo_user(db)
+async def answer_question(payload: StudyAnswerRequest, db: AsyncSession = Depends(get_db), current_user: Usuario = Depends(get_current_user)):
+    user = current_user
 
     question_result = await db.execute(
         select(Questao)
@@ -385,8 +387,8 @@ async def answer_question(payload: StudyAnswerRequest, db: AsyncSession = Depend
 
 
 @router.post("/questions/{questao_id}/favorite", response_model=StudyStateResponse)
-async def toggle_favorite_question(questao_id: UUID, db: AsyncSession = Depends(get_db)):
-    user = await _ensure_demo_user(db)
+async def toggle_favorite_question(questao_id: UUID, db: AsyncSession = Depends(get_db), current_user: Usuario = Depends(get_current_user)):
+    user = current_user
     state = await _get_or_create_state(db, user, questao_id)
     state.is_favorite = not bool(state.is_favorite)
     state.updated_at = datetime.now(timezone.utc)
@@ -404,8 +406,8 @@ async def save_question_note(
     questao_id: UUID,
     payload: StudyNoteRequest,
     db: AsyncSession = Depends(get_db),
-):
-    user = await _ensure_demo_user(db)
+, current_user: Usuario = Depends(get_current_user)):
+    user = current_user
     state = await _get_or_create_state(db, user, questao_id)
     state.note = payload.note.strip()[:4000] or None
     state.updated_at = datetime.now(timezone.utc)
@@ -423,8 +425,8 @@ async def report_question(
     questao_id: UUID,
     payload: StudyReportRequest,
     db: AsyncSession = Depends(get_db),
-):
-    user = await _ensure_demo_user(db)
+, current_user: Usuario = Depends(get_current_user)):
+    user = current_user
     state = await _get_or_create_state(db, user, questao_id)
     state.reported_issue = payload.issue.strip()[:4000]
     state.reported_at = datetime.now(timezone.utc)
@@ -443,7 +445,7 @@ async def get_error_notebook(
     limit: int = Query(30, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
 ):
-    user = await _ensure_demo_user(db)
+    user = current_user
     rows = await db.execute(
         select(EstudoQuestaoEstado)
         .where(
@@ -464,7 +466,7 @@ async def get_due_reviews(
     limit: int = Query(30, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
 ):
-    user = await _ensure_demo_user(db)
+    user = current_user
     now = datetime.now(timezone.utc)
     rows = await db.execute(
         select(EstudoQuestaoEstado)
@@ -487,7 +489,7 @@ async def get_favorites(
     limit: int = Query(30, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
 ):
-    user = await _ensure_demo_user(db)
+    user = current_user
     rows = await db.execute(
         select(EstudoQuestaoEstado)
         .where(
@@ -594,7 +596,7 @@ async def get_smart_simulado(
     quantidade: int = Query(20, ge=5, le=100),
     db: AsyncSession = Depends(get_db),
 ):
-    user = await _ensure_demo_user(db)
+    user = current_user
 
     if modo in {"erros", "revisao", "favoritas"}:
         state_query = select(EstudoQuestaoEstado).where(EstudoQuestaoEstado.usuario_id == user.id)
@@ -631,7 +633,7 @@ async def get_smart_simulado(
 
 
 @router.get("/coverage", response_model=CoverageResponse)
-async def get_coverage(db: AsyncSession = Depends(get_db)):
+async def get_coverage(db: AsyncSession = Depends(get_db), current_user: Usuario = Depends(get_current_user)):
     concursos_total = await db.scalar(select(func.count(Concurso.id))) or 0
     provas_sem_questoes = await db.scalar(
         select(func.count(Prova.id)).where(
@@ -735,7 +737,7 @@ async def get_coverage(db: AsyncSession = Depends(get_db)):
 async def ask_study_tutor(
     payload: TutorChatRequest,
     db: AsyncSession = Depends(get_db),
-):
+, current_user: Usuario = Depends(get_current_user)):
     question_result = await db.execute(
         select(Questao)
         .where(Questao.id == payload.questao_id)
@@ -800,8 +802,8 @@ Instruções pedagógicas:
 # =============================================
 
 @router.get("/streak", response_model=UserStreakResponse)
-async def get_user_streak(db: AsyncSession = Depends(get_db)):
-    user = await _ensure_demo_user(db)
+async def get_user_streak(db: AsyncSession = Depends(get_db), current_user: Usuario = Depends(get_current_user)):
+    user = current_user
     now = datetime.now(timezone.utc)
     today_date = now.date()
 
@@ -866,9 +868,9 @@ async def get_user_streak(db: AsyncSession = Depends(get_db)):
 # =============================================
 
 @router.get("/gamification", response_model=GamificationProfileResponse)
-async def get_gamification_profile(db: AsyncSession = Depends(get_db)):
+async def get_gamification_profile(db: AsyncSession = Depends(get_db), current_user: Usuario = Depends(get_current_user)):
     """Retorna o perfil de gamificação do concurseiro com cálculo de XP, liga atual e conquistas."""
-    user = await _ensure_demo_user(db)
+    user = current_user
 
     ans_res = await db.execute(
         select(
@@ -978,7 +980,7 @@ async def get_flashcards(
     limit: int = Query(20, ge=5, le=50),
     db: AsyncSession = Depends(get_db),
 ):
-    user = await _ensure_demo_user(db)
+    user = current_user
     rows = await db.execute(
         select(EstudoQuestaoEstado)
         .where(
@@ -1052,8 +1054,8 @@ async def get_flashcards(
 async def review_flashcard(
     payload: FlashcardReviewRequest,
     db: AsyncSession = Depends(get_db),
-):
-    user = await _ensure_demo_user(db)
+, current_user: Usuario = Depends(get_current_user)):
+    user = current_user
     days_map = {0: 1, 2: 2, 4: 5, 5: 10}
     interval = days_map.get(payload.rating, 3)
     try:
@@ -1341,7 +1343,7 @@ def _parse_edital_fallback(text: str) -> list[dict]:
 async def import_edital_conteudo(
     req: EditalImportRequest,
     db: AsyncSession = Depends(get_db),
-):
+, current_user: Usuario = Depends(get_current_user)):
     """
     Importa conteúdo programático do edital:
     1. Extrai disciplinas e tópicos estruturados com IA Socrática (ou fallback).
